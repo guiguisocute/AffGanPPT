@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AffGAN 快速入门 · 讲前冲刺手册（7 月 11 日报告用）</title>
+<style>
+  :root{
+    --serif: "Source Han Serif SC","Songti SC","Noto Serif CJK SC",serif;
+    --sans:  "Source Han Sans SC","PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif;
+    --mono:  ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --ink:#1b2430; --ink2:#3a4654; --blue:#1a4f8a; --blue2:#2a6fb5; --bluebg:#eef4fb;
+    --accent:#d97757; --accent2:#c0563a; --gold:#8a6d2f; --goldbg:#f5efe1;
+    --gray:#6b7785; --line:#dfe6ee; --panel:#f5f8fc; --good:#2f8a5b; --bad:#c0563a;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{margin:0; font-family:var(--serif); color:var(--ink); background:#fafbfd; line-height:1.7;}
+
+  header.hero{
+    background:linear-gradient(135deg,#0f2746 0%,#1a4f8a 55%,#2a6fb5 100%);
+    color:#fff; padding:56px 24px 48px; text-align:center;
+  }
+  .hero .badge{font-family:var(--sans); font-size:14px; letter-spacing:.08em; color:#bcd6f0; margin-bottom:14px;}
+  .hero h1{font-family:var(--sans); font-size:clamp(26px,4.5vw,44px); font-weight:800; margin:0 0 10px;}
+  .hero .sub{font-size:clamp(14px,2vw,18px); color:#cfe0f2; font-family:var(--sans);}
+  .hero .mainline{
+    display:inline-block; margin-top:22px; padding:10px 22px; border-radius:999px;
+    background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.25);
+    font-family:var(--sans); font-weight:700; font-size:clamp(14px,2.2vw,19px); color:#fff;
+  }
+  .hero .mainline b{color:#ffb59a;}
+
+  nav.toc{
+    position:sticky; top:0; z-index:50; background:#fff; border-bottom:1px solid var(--line);
+    display:flex; gap:4px; overflow-x:auto; padding:10px 16px; font-family:var(--sans);
+  }
+  nav.toc a{
+    flex:none; font-size:14px; font-weight:600; color:var(--blue); text-decoration:none;
+    padding:6px 14px; border-radius:999px; border:1px solid transparent;
+  }
+  nav.toc a:hover{background:var(--bluebg); border-color:#cfe0f2;}
+
+  main{max-width:1000px; margin:0 auto; padding:36px 20px 80px;}
+  section{margin-bottom:56px;}
+  h2.sec{
+    font-family:var(--sans); font-size:clamp(22px,3vw,30px); font-weight:800; color:var(--ink);
+    margin:0 0 6px; display:flex; align-items:center; gap:12px;
+  }
+  h2.sec::before{content:""; width:10px; height:28px; border-radius:4px; background:var(--accent); flex:none;}
+  .secsub{color:var(--gray); font-family:var(--sans); font-size:15px; margin:0 0 20px;}
+
+  .card{background:#fff; border:1px solid var(--line); border-radius:14px; padding:20px 24px; margin:14px 0;}
+  .card.blue{background:var(--bluebg); border-color:#cfe0f2;}
+  .card.warm{background:#fdf1ec; border-color:#f0cdbe;}
+  .card.gold{background:var(--goldbg); border-color:#e7dcc2;}
+  .card h3{font-family:var(--sans); font-size:19px; margin:0 0 8px; color:var(--blue); font-weight:700;}
+  .card.warm h3{color:var(--accent2);}
+  .card p{margin:8px 0; font-size:16.5px; color:var(--ink2);}
+  .card li{font-size:16.5px; color:var(--ink2); margin:6px 0;}
+
+  .k{color:var(--accent2); font-weight:700; font-style:normal;}
+  .b{color:var(--blue); font-weight:700; font-style:normal;}
+  .var{font-style:italic; font-family:"Cambria Math",Georgia,serif;}
+  sub,sup{font-size:.68em;}
+
+  .formula{
+    font-family:"Cambria Math",Georgia,serif; background:#fbfcfe; border:1px solid var(--line);
+    border-radius:12px; padding:16px 20px; font-size:clamp(16px,2.4vw,21px); text-align:center; margin:10px 0;
+  }
+  .formula .say{
+    display:block; margin-top:8px; font-family:var(--sans); font-size:14px; color:var(--gray); font-style:normal;
+  }
+
+  /* inline svg figures */
+  .svgfig{ margin:16px auto 6px; text-align:center; }
+  .svgfig svg{ max-width:100%; height:auto; display:block; margin:0 auto; }
+  .svgfig figcaption{ font-family:var(--sans); font-size:14px; color:var(--gray); margin-top:8px; }
+  .svgfig svg text{ font-family:var(--sans); }
+
+  table{width:100%; border-collapse:collapse; font-family:var(--sans); font-size:15px; background:#fff;}
+  th,td{padding:9px 12px; text-align:center; border-bottom:1px solid var(--line);}
+  th{background:var(--blue); color:#fff; font-weight:600;}
+  th:first-child,td:first-child{text-align:left;}
+  tr:nth-child(even) td{background:var(--panel);}
+  td.win{color:var(--good); font-weight:700;}
+  td.bad{color:var(--bad); font-weight:700;}
+  tr.hi td{background:#fdeee8 !important; font-weight:700;}
+
+  .grid2{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:14px;}
+  .grid3{display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px;}
+
+  .day{display:flex; gap:14px; align-items:flex-start; background:#fff; border:1px solid var(--line);
+       border-radius:12px; padding:14px 16px; margin:10px 0;}
+  .day .dn{flex:none; font-family:var(--sans); font-weight:800; font-size:15px; color:#fff; background:var(--blue);
+           border-radius:10px; padding:6px 12px; min-width:96px; text-align:center;}
+  .day.acc .dn{background:var(--accent);}
+  .day .dt{font-size:16px; color:var(--ink2);}
+  .day .dt b{color:var(--ink);}
+
+  details{background:#fff; border:1px solid var(--line); border-radius:12px; padding:14px 18px; margin:10px 0;}
+  details summary{
+    cursor:pointer; font-family:var(--sans); font-weight:700; font-size:16.5px; color:var(--blue);
+    list-style:none; display:flex; gap:10px; align-items:baseline;
+  }
+  details summary::before{content:"Q"; flex:none; font-size:13px; font-weight:800; color:#fff; background:var(--accent);
+    border-radius:6px; padding:2px 8px;}
+  details[open] summary{margin-bottom:8px;}
+  details .a{font-size:16px; color:var(--ink2);}
+  details .a b{color:var(--ink);}
+
+  .check{list-style:none; padding:0; margin:0;}
+  .check li{position:relative; padding-left:34px; margin:10px 0; font-size:16.5px; color:var(--ink2);}
+  .check li::before{content:"☐"; position:absolute; left:4px; top:0; color:var(--accent); font-size:19px;}
+
+  .redline li{position:relative; padding-left:30px; margin:10px 0; font-size:16.5px; color:var(--ink2); list-style:none;}
+  .redline li::before{content:"✗"; position:absolute; left:2px; color:var(--bad); font-weight:800;}
+  .redline li b.ok{color:var(--good);}
+
+  .pill{display:inline-block; font-family:var(--sans); font-size:13px; font-weight:700; color:#fff;
+        background:var(--accent); padding:3px 12px; border-radius:999px; vertical-align:2px; margin-right:6px;}
+  .pill.blue{background:var(--blue);}
+  .pill.gold{background:var(--gold);}
+
+  footer{color:var(--gray); font-family:var(--sans); font-size:13px; text-align:center; padding:30px 16px 46px;}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="badge">AMORTISED MAP INFERENCE FOR IMAGE SUPER-RESOLUTION · ICLR 2017 ORAL</div>
+  <h1>AffGAN 快速入门 · 讲前冲刺手册</h1>
+  <div class="sub">给 7 月 11 日报告用 · 配合 index.html（幻灯片）与 演讲稿_朗读版.md 使用</div>
+  <div class="mainline">全文只有一条主线：<b>MAP</b> → <b>仿射投影</b> → <b>交叉熵</b> → <b>三种解法</b></div>
+</header>
+
+<nav class="toc">
+  <a href="#map">① 一页地图</a>
+  <a href="#plan">② 9 天计划</a>
+  <a href="#pre">③ 预备知识五张卡</a>
+  <a href="#eq">④ 六个公式</a>
+  <a href="#num">⑤ 数字速记</a>
+  <a href="#qa">⑥ Q&amp;A 预演</a>
+  <a href="#red">⑦ 红线清单</a>
+  <a href="#final">⑧ 讲前检查</a>
+</nav>
+
+<main>
+
+<!-- ① 一页地图 -->
+<section id="map">
+  <h2 class="sec">① 一页地图：这篇论文到底在干嘛</h2>
+  <p class="secsub">先把故事讲成四步。任何时候忘了自己讲到哪，回到这四步。</p>
+
+  <div class="grid2">
+    <div class="card blue">
+      <h3>第 1 步 · 问题：超分是"多解"的</h3>
+      <p>一张低清图 <span class="var">x</span> 对应<b>一整个集合</b>的合法高清解（所有满足 <span class="var">Ay = x</span> 的 <span class="var">y</span>）。
+      用 MSE 训练 = 取后验<b>均值</b>，把多种纹理平均 → <em class="k">糊</em>。
+      本文主张改取后验<b>众数</b>（MAP）：不平均、落在真实图像先验的高概率区。</p>
+    </div>
+    <div class="card blue">
+      <h3>第 2 步 · 架构：仿射投影层</h3>
+      <p>把网络输出写成 <b>基线解 + 零空间残差</b>：
+      <span class="var">ŷ = A⁺x + (I−A⁺A)f<sub>θ</sub>(x)</span>。
+      残差被投进 A 的零空间 → 在论文的无噪线性模型下，<em class="k">下采样回去恒等于 x</em>，一致性是<b>结构强制</b>的，不靠损失函数软性鼓励。</p>
+    </div>
+    <div class="card blue">
+      <h3>第 3 步 · 化归：MAP = 最小化交叉熵</h3>
+      <p>有了投影，约束优化变无约束，摊销 MAP 目标恰好等于最小化
+      <span class="var">H[q<sub>θ</sub>, p<sub>Y</sub>]</span>（模型输出分布 vs 真实图像分布）。
+      于是<b>不再需要成对回归</b>，问题变成生成式建模。</p>
+    </div>
+    <div class="card blue">
+      <h3>第 4 步 · 三种解法</h3>
+      <p><b>AffGAN</b>：修正 GAN 更新最小化反向 KL（差一个熵项的替代目标）——真实图像上<em class="k">视觉最好</em>；
+      <b>AffDG</b>：去噪器估计 ∇log p<sub>Y</sub> 反传——偏糊；
+      <b>AffLL</b>：PixelCNN+MCGSM 显式密度当先验——偏糊。</p>
+    </div>
+  </div>
+
+  <figure class="svgfig">
+    <svg viewBox="0 0 860 380" role="img" aria-label="超分多解性示意">
+      <rect x="40" y="20" width="780" height="320" rx="10" fill="#fbfcfe" stroke="#dfe6ee"/>
+      <text x="68" y="50" font-size="16" fill="#6b7785">真实高清图分布 p<tspan font-size="12" dy="3">Y</tspan><tspan dy="-3">（灰色越深 = 概率越高）</tspan></text>
+      <!-- 两个高概率“峰” -->
+      <g transform="rotate(-20 280 261)">
+        <ellipse cx="280" cy="261" rx="90" ry="52" fill="#cfd8e3" opacity="0.85"/>
+        <ellipse cx="280" cy="261" rx="45" ry="26" fill="#b0bece"/>
+      </g>
+      <g transform="rotate(-20 640 124)">
+        <ellipse cx="640" cy="124" rx="100" ry="58" fill="#cfd8e3" opacity="0.85"/>
+        <ellipse cx="640" cy="124" rx="50" ry="29" fill="#b0bece"/>
+      </g>
+      <!-- 约束线 Ay=x -->
+      <line x1="100" y1="330" x2="780" y2="70" stroke="#d97757" stroke-width="3.5"/>
+      <text x="112" y="316" font-size="15" fill="#c0563a">满足 Ay = x 的合法解（一整条线）</text>
+      <!-- 均值 -->
+      <circle cx="460" cy="192" r="8" fill="#2f8a5b"/>
+      <line x1="455" y1="184" x2="410" y2="166" stroke="#2f8a5b" stroke-width="1.5"/>
+      <text x="380" y="158" font-size="16" font-weight="700" fill="#2f8a5b" text-anchor="middle">均值（MSE）掉进空地 → 糊</text>
+      <!-- 中位数 -->
+      <circle cx="550" cy="158" r="7" fill="#8a6d2f"/>
+      <line x1="546" y1="166" x2="540" y2="190" stroke="#8a6d2f" stroke-width="1.5"/>
+      <text x="545" y="208" font-size="14" fill="#8a6d2f" text-anchor="end">中位数（MAE）</text>
+      <!-- 众数 -->
+      <circle cx="640" cy="124" r="9" fill="#c0563a" stroke="#fff" stroke-width="2"/>
+      <line x1="640" y1="112" x2="640" y2="62" stroke="#c0563a" stroke-width="1.5"/>
+      <text x="640" y="52" font-size="16" font-weight="700" fill="#c0563a" text-anchor="middle">众数（MAP）落在峰顶 → 锐利</text>
+    </svg>
+    <figcaption>核心动机一张图：低清 x 只给出一条"合法解线"；MSE 取平均掉进两峰之间的低概率空地，MAP 直接爬上峰顶（对应论文 Figure 1 的瑞士卷实验）。</figcaption>
+  </figure>
+
+  <div class="card warm">
+    <h3>开场 30 秒背下来的话</h3>
+    <p>"超分不是'从低清唯一还原高清'，而是<b>在满足约束的候选里，挑一个最像真实图像的点</b>。
+    本文用<b>仿射投影</b>锁住'满足约束'，用<b>GAN</b>推向'像真实图像'，中间用<b>交叉熵</b>把两件事接起来。"</p>
+  </div>
+</section>
+
+<!-- ② 9 天计划 -->
+<section id="plan">
+  <h2 class="sec">② 9 天冲刺计划（7/2 → 7/11）</h2>
+  <p class="secsub">每天 1–2 小时。前 4 天补地基，中间 3 天啃论文，最后 2 天全部留给"讲"。</p>
+
+  <div class="day"><div class="dn">7/2–7/3</div><div class="dt"><b>地基 · 概率与点估计</b>：本页 ③-卡1、卡3。搞懂"损失函数决定最优点落在哪"（MSE→均值 / MAE→中位数 / 0–1→众数），以及 H[q,p]=H[q]+KL[q‖p]。自测：不看资料，画出偏态分布上三个点的位置。</div></div>
+  <div class="day"><div class="dn">7/4</div><div class="dt"><b>地基 · 线性代数</b>：本页 ③-卡2。零空间、伪逆、为什么 (I−A⁺A)f 下采样恒为 0。推荐配 3Blue1Brown《线性代数的本质》第 5–7 集找几何直觉。</div></div>
+  <div class="day"><div class="dn">7/5</div><div class="dt"><b>地基 · GAN 与去噪</b>：本页 ③-卡4、卡5。读目录里那篇《A Friendly Introduction to GANs》；记住 D* = p<sub>Y</sub>/(p<sub>Y</sub>+q<sub>G</sub>) 和 "去噪残差 ≈ 对数密度梯度"两个结论即可。</div></div>
+  <div class="day acc"><div class="dn">7/6–7/7</div><div class="dt"><b>精读论文</b>：对照 index.html 顺主线过一遍原文 §1–§3；亲手抄推一次式 (4)(7)(9) 和熵恒等式（见本页 ④）。第二天读 §5 实验 + 附录 C（实例噪声）、附录 F（变分扩展）。</div></div>
+  <div class="day acc"><div class="dn">7/8</div><div class="dt"><b>数字与图</b>：背下本页 ⑤ 的关键数字；对着 fig1–fig7 每张图能脱稿说出"这张图证明了什么"。重点三张：Figure 1（题眼）、Figure 3（草地）、Figure 4+Table 2（权衡）。</div></div>
+  <div class="day acc"><div class="dn">7/9</div><div class="dt"><b>第一次全程试讲</b>：对着 index.html 念演讲稿，计时（目标 35–45 分钟）。卡壳的页记下来，回原文补。过一遍本页 ⑥ 的 Q&amp;A。</div></div>
+  <div class="day acc"><div class="dn">7/10</div><div class="dt"><b>第二次试讲 + 收尾</b>：这次尽量脱稿，只看幻灯片。检查本页 ⑦ 红线清单一条条过。最慢的三页（第 7、12、13 页）单独再练一遍。</div></div>
+  <div class="day"><div class="dn">7/11</div><div class="dt"><b>报告日</b>：出发前过一遍本页 ⑧ 检查单 + ① 的开场 30 秒。语速慢 10%，公式"先中文后符号"。</div></div>
+</section>
+
+<!-- ③ 预备知识 -->
+<section id="pre">
+  <h2 class="sec">③ 预备知识五张卡（零基础速成）</h2>
+  <p class="secsub">每张卡 = 核心结论 + 一句人话 + 自测。自测答不上来就点开看答案。</p>
+
+  <div class="card">
+    <h3><span class="pill blue">卡 1</span>点估计与贝叶斯：损失函数决定"最优答案"落在哪</h3>
+    <p><b>核心结论：</b>后验 <span class="var">p(y|x) ∝ p(x|y)·p(y)</span>（后验 ∝ 似然 × 先验）。
+    对同一条后验：平方损失 MSE 的贝叶斯最优解是<b>均值</b>；绝对损失 MAE 是<b>中位数</b>；0–1 损失（离散情形严格成立）是<b>众数</b>，即 MAP。</p>
+    <p><b>人话：</b>分布像一座山——均值是"重心"，中位数是"中点"，众数是"峰顶"。超分多解时把解"平均"就会掉进两峰之间的空地，所以要爬峰顶。</p>
+    <figure class="svgfig">
+      <svg viewBox="0 0 720 295" role="img" aria-label="均值中位数众数位置示意">
+        <path d="M55,248 C90,244 140,95 195,86 C235,80 285,135 355,180 C445,225 570,244 685,248 L685,250 L55,250 Z"
+              fill="#dbe9f7" stroke="#2a6fb5" stroke-width="2.5" opacity="0.9"/>
+        <line x1="50" y1="250" x2="695" y2="250" stroke="#3a4654" stroke-width="2"/>
+        <!-- 众数 -->
+        <line x1="195" y1="88" x2="195" y2="250" stroke="#c0563a" stroke-width="3.5"/>
+        <text x="195" y="46" font-size="16" font-weight="700" fill="#c0563a" text-anchor="middle">众数 mode = MAP</text>
+        <text x="195" y="66" font-size="13" fill="#c0563a" text-anchor="middle">（0–1 损失 · 峰顶）</text>
+        <!-- 中位数 -->
+        <line x1="300" y1="150" x2="300" y2="250" stroke="#8a6d2f" stroke-width="2.5" stroke-dasharray="6 5"/>
+        <line x1="300" y1="148" x2="330" y2="120" stroke="#8a6d2f" stroke-width="1.2"/>
+        <text x="336" y="115" font-size="15" font-weight="700" fill="#8a6d2f">中位数 median = MAE</text>
+        <!-- 均值 -->
+        <line x1="395" y1="198" x2="395" y2="250" stroke="#2f8a5b" stroke-width="2.5" stroke-dasharray="6 5"/>
+        <line x1="395" y1="196" x2="415" y2="168" stroke="#2f8a5b" stroke-width="1.2"/>
+        <text x="420" y="162" font-size="15" font-weight="700" fill="#2f8a5b">均值 mean = MSE（被长尾拉偏）</text>
+        <text x="370" y="282" font-size="15" fill="#3a4654" text-anchor="middle">高清解 y（某一维）</text>
+      </svg>
+      <figcaption>同一条偏态后验：损失函数不同，"贝叶斯最优答案"落点不同——这是全文选 MAP 的出发点。</figcaption>
+    </figure>
+    <details><summary>自测：为什么 MSE 训练的超分网络输出会糊？</summary>
+      <div class="a">因为一张低清图对应多个合理高清解，MSE 的贝叶斯最优行为是输出这些解的<b>后验加权平均</b>；不同纹理逐像素平均后高频细节相互抵消 → 过度平滑。这不是网络不够大，而是<b>目标函数本身</b>决定的。</div>
+    </details>
+  </div>
+
+  <div class="card">
+    <h3><span class="pill blue">卡 2</span>线性代数：零空间 · 伪逆 · 投影</h3>
+    <p><b>核心结论：</b>下采样是线性变换 <span class="var">x = Ay</span>（带步长的卷积）。
+    <b>零空间</b> = 被 A 压成 0 的方向，沿它移动，下采样结果不变；
+    <b>伪逆 A⁺</b> 满足 <span class="var">AA⁺A = A</span>，是"最稳的反操作"（实现为转置卷积，核需数值求解，<em class="k">A⁺ ≠ Aᵀ</em>）；
+    <span class="var">(I−A⁺A)</span> 恰是投影到零空间的算子。</p>
+    <p><b>人话：</b>A⁺x 给一个"低频肯定对"的底图，网络只负责往零空间里补高频细节——怎么补都不破坏与输入的一致性。</p>
+    <figure class="svgfig">
+      <svg viewBox="0 0 760 335" role="img" aria-label="仿射投影几何示意">
+        <defs>
+          <marker id="arrG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 Z" fill="#2f8a5b"/>
+          </marker>
+        </defs>
+        <!-- 仿射子空间 -->
+        <line x1="70" y1="280" x2="700" y2="100" stroke="#2a6fb5" stroke-width="3"/>
+        <text x="95" y="318" font-size="15" fill="#1a4f8a">仿射子空间 {y : Ay = x}　——　沿线走 = 零空间方向，下采样结果不变</text>
+        <!-- 基线解 -->
+        <circle cx="228" cy="235" r="8" fill="#1a4f8a"/>
+        <text x="228" y="270" font-size="15" font-weight="700" fill="#1a4f8a" text-anchor="middle">A⁺x 基线解（直接上采样）</text>
+        <!-- 任意网络输出 -->
+        <circle cx="480" cy="55" r="8" fill="#d97757"/>
+        <text x="498" y="50" font-size="15" font-weight="700" fill="#c0563a">任意网络输出 f<tspan font-size="12" dy="3">θ</tspan><tspan dy="-3">(x)</tspan></text>
+        <!-- 垂线投影 -->
+        <line x1="480" y1="55" x2="508" y2="155" stroke="#d97757" stroke-width="2" stroke-dasharray="6 5"/>
+        <path d="M497,158 L494,147 L505,144" fill="none" stroke="#6b7785" stroke-width="1.5"/>
+        <!-- 投影落点 -->
+        <circle cx="508" cy="155" r="9" fill="#2f8a5b" stroke="#fff" stroke-width="2"/>
+        <text x="527" y="192" font-size="15" font-weight="700" fill="#2f8a5b">ŷ：投影落点，Aŷ = x</text>
+        <!-- 残差箭头 -->
+        <line x1="238" y1="232" x2="494" y2="160" stroke="#2f8a5b" stroke-width="3" marker-end="url(#arrG)"/>
+        <text x="340" y="172" font-size="14" fill="#2f8a5b" text-anchor="middle">残差 (I−A⁺A)f<tspan font-size="11" dy="3">θ</tspan><tspan dy="-3">(x)，落在零空间</tspan></text>
+      </svg>
+      <figcaption>式 (7) 的几何：不管网络输出落在哪，投影都把它"按"回合法解平面上——ŷ = A⁺x + 零空间残差，一致性是结构保证的。</figcaption>
+    </figure>
+    <details><summary>自测：为什么 ŷ = A⁺x + (I−A⁺A)f<sub>θ</sub>(x) 下采样回去一定等于 x？</summary>
+      <div class="a">两项分别看：<b>A·A⁺x = x</b>（在论文无噪线性模型、A⁺ 准确的前提下，A⁺x 本身就是一个合法解）；<b>A·(I−A⁺A)f = (A−AA⁺A)f = (A−A)f = 0</b>（用 AA⁺A=A）。相加即 Aŷ = x。</div>
+    </details>
+  </div>
+
+  <div class="card">
+    <h3><span class="pill blue">卡 3</span>信息论：熵 / 交叉熵 / KL，一条恒等式</h3>
+    <div class="formula"><span class="var">H[q, p] = H[q] + KL[q‖p]</span>
+      <span class="say">读法：q 和 p 的交叉熵 = q 自身的熵 + q 到 p 的 KL 散度</span></div>
+    <figure class="svgfig">
+      <svg viewBox="0 0 720 235" role="img" aria-label="熵与交叉熵的编码长度示意">
+        <rect x="70" y="40" width="280" height="40" rx="6" fill="#9ec5ec" stroke="#2a6fb5"/>
+        <text x="365" y="66" font-size="15" fill="#1a4f8a">H[q]：用 q 的最优编码表（理论最少 bit）</text>
+        <line x1="350" y1="84" x2="350" y2="136" stroke="#9aa6b2" stroke-width="1.5" stroke-dasharray="4 4"/>
+        <line x1="350" y1="122" x2="520" y2="122" stroke="#c0563a" stroke-width="1.5"/>
+        <line x1="350" y1="116" x2="350" y2="128" stroke="#c0563a" stroke-width="1.5"/>
+        <line x1="520" y1="116" x2="520" y2="128" stroke="#c0563a" stroke-width="1.5"/>
+        <text x="435" y="110" font-size="14" font-weight="700" fill="#c0563a" text-anchor="middle">KL[q‖p]：错配多花的 bit</text>
+        <rect x="70" y="140" width="280" height="40" fill="#9ec5ec" stroke="#2a6fb5"/>
+        <rect x="350" y="140" width="170" height="40" fill="#f3b48c" stroke="#d97757"/>
+        <text x="70" y="210" font-size="15" fill="#3a4654">H[q,p] 交叉熵：错用 p 的编码表 ＝ 蓝（H[q]）＋ 橙（KL[q‖p]）</text>
+      </svg>
+      <figcaption>本文关键：第一个分布是随 θ 变的 q<sub>θ</sub>，蓝条长度（熵）不固定 → 最小化交叉熵 ≠ 最小化 KL，恰差一个"熵奖励"。</figcaption>
+    </figure>
+    <p><b>人话（编码视角）：</b>H[q] = 用 q 自己的最优编码表，平均最少花几个 bit；H[q,p] = 数据来自 q 却错用 p 的编码表，平均花几个 bit；KL = 因错配<b>多花</b>的那截。</p>
+    <p><b>为什么本文必须区分它们：</b>MLE 里第一个分布是固定的真实分布，最小化交叉熵 ⟺ 最小化 KL；但本文第一个分布是<b>随 θ 变的 q<sub>θ</sub></b>，H[q<sub>θ</sub>] 不固定 → 交叉熵目标（纯 MAP）与 GAN 最小化的 KL <em class="k">不等价</em>，恰好差一个"熵奖励" H[q<sub>θ</sub>]。</p>
+    <details><summary>自测：GAN 的"熵奖励"是好事还是坏事？论文怎么说？</summary>
+      <div class="a">论文说是<b>有益的副作用</b>：相比纯 MAP（会把一切压向众数），KL 目标额外偏好<b>更高熵、整体上更多样</b>的解；§5.6 还指出熵项让 AffGAN 对坐标变换更有韧性。注意"缓解 mode collapse"是<b>引申推论</b>，论文原文没有这个说法——被追问时要说清这层区别。</div>
+    </details>
+  </div>
+
+  <div class="card">
+    <h3><span class="pill blue">卡 4</span>GAN：本文用法与两处改造</h3>
+    <p><b>核心结论：</b>固定 G 时最优判别器 <span class="var">D* = p<sub>Y</sub> / (p<sub>Y</sub> + q<sub>G</sub>)</span>。
+    本文两处改造：① 生成器输入<b>不是噪声 z 而是低清图 x</b>（带投影的 SR 网络就是生成器）；② 用<b>修正的生成器更新规则</b>（式 10 第二行），可证等价于最小化反向 <span class="var">KL[q<sub>θ</sub>‖p<sub>Y</sub>]</span>（附录 A，最早见于 Huszár 2016 博客）。</p>
+    <figure class="svgfig">
+      <svg viewBox="0 0 760 215" role="img" aria-label="AffGAN 训练环示意">
+        <defs>
+          <marker id="arrB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 Z" fill="#3a4654"/>
+          </marker>
+          <marker id="arrO" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 Z" fill="#c0563a"/>
+          </marker>
+        </defs>
+        <rect x="30" y="85" width="84" height="40" rx="8" fill="#eef4fb" stroke="#cfe0f2"/>
+        <text x="72" y="110" font-size="15" fill="#1a4f8a" text-anchor="middle">低清 x</text>
+        <line x1="114" y1="105" x2="146" y2="105" stroke="#3a4654" stroke-width="2" marker-end="url(#arrB)"/>
+        <rect x="150" y="70" width="190" height="70" rx="10" fill="#1a4f8a"/>
+        <text x="245" y="99" font-size="16" font-weight="700" fill="#fff" text-anchor="middle">生成器 G</text>
+        <text x="245" y="122" font-size="13" fill="#cfe0f2" text-anchor="middle">带仿射投影的 SR 网络</text>
+        <line x1="340" y1="105" x2="388" y2="105" stroke="#3a4654" stroke-width="2" marker-end="url(#arrB)"/>
+        <text x="364" y="93" font-size="13" fill="#6b7785" text-anchor="middle">假图 ŷ</text>
+        <rect x="392" y="10" width="96" height="42" rx="8" fill="#eaf3ec" stroke="#bfd9c6"/>
+        <text x="440" y="36" font-size="14" fill="#2f8a5b" text-anchor="middle">真实高清 y</text>
+        <line x1="440" y1="52" x2="440" y2="78" stroke="#3a4654" stroke-width="2" marker-end="url(#arrB)"/>
+        <rect x="392" y="82" width="96" height="46" rx="10" fill="#fdf1ec" stroke="#d97757" stroke-dasharray="6 4"/>
+        <text x="440" y="102" font-size="13" fill="#c0563a" text-anchor="middle">真、假都先加</text>
+        <text x="440" y="119" font-size="13" font-weight="700" fill="#c0563a" text-anchor="middle">实例噪声</text>
+        <line x1="488" y1="105" x2="520" y2="105" stroke="#3a4654" stroke-width="2" marker-end="url(#arrB)"/>
+        <rect x="524" y="70" width="150" height="70" rx="10" fill="#d97757"/>
+        <text x="599" y="99" font-size="16" font-weight="700" fill="#fff" text-anchor="middle">判别器 D</text>
+        <text x="599" y="122" font-size="13" fill="#fdeee8" text-anchor="middle">真 / 假？</text>
+        <path d="M599,140 C599,190 320,196 252,148" fill="none" stroke="#c0563a" stroke-width="2.5" marker-end="url(#arrO)"/>
+        <text x="440" y="196" font-size="14" font-weight="700" fill="#c0563a" text-anchor="middle">修正更新规则 → 最小化反向 KL[q<tspan font-size="11" dy="3">θ</tspan><tspan dy="-3">‖p</tspan><tspan font-size="11" dy="3">Y</tspan><tspan dy="-3">]</tspan></text>
+      </svg>
+      <figcaption>AffGAN 一圈流程：生成器吃的是低清图而非噪声；真假样本先加实例噪声再进判别器；反馈按修正规则更新 G。</figcaption>
+    </figure>
+    <p><b>实例噪声（附录 C）：</b>GAN 不稳的病根 = p<sub>Y</sub> 与 q<sub>θ</sub> 都是集中、支撑几乎不重叠的分布 → 近似最优判别器一大堆、梯度乱。
+    解法：给<b>真、假样本同时</b>加高斯噪声（σ 退火到 0），两分布变胖重叠 → 最优 D 唯一、梯度稳；且与单边标签平滑不同，<b>不给最优判别器引入偏差</b>。</p>
+    <figure class="svgfig">
+      <svg viewBox="0 0 760 275" role="img" aria-label="实例噪声原理示意">
+        <defs>
+          <marker id="arrN" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 Z" fill="#d97757"/>
+          </marker>
+        </defs>
+        <text x="190" y="30" font-size="15" font-weight="700" fill="#3a4654" text-anchor="middle">没加噪：两条"细线"互不重叠</text>
+        <line x1="150" y1="45" x2="232" y2="238" stroke="#6b7785" stroke-width="1.5" stroke-dasharray="5 5"/>
+        <line x1="198" y1="40" x2="180" y2="240" stroke="#6b7785" stroke-width="1.5" stroke-dasharray="5 5"/>
+        <line x1="132" y1="70" x2="272" y2="222" stroke="#6b7785" stroke-width="1.5" stroke-dasharray="5 5"/>
+        <g transform="rotate(-22 118 140)"><ellipse cx="118" cy="140" rx="13" ry="72" fill="#9ec5ec" stroke="#2a6fb5" stroke-width="2"/></g>
+        <g transform="rotate(-22 262 140)"><ellipse cx="262" cy="140" rx="13" ry="72" fill="#f3b48c" stroke="#d97757" stroke-width="2"/></g>
+        <text x="92" y="243" font-size="14" font-weight="700" fill="#1a4f8a">p<tspan font-size="11" dy="3">Y</tspan></text>
+        <text x="288" y="243" font-size="14" font-weight="700" fill="#c0563a">q<tspan font-size="11" dy="3">θ</tspan></text>
+        <text x="190" y="264" font-size="13" fill="#6b7785" text-anchor="middle">无数条边界都能完美分开 → 梯度乱</text>
+        <line x1="330" y1="140" x2="425" y2="140" stroke="#d97757" stroke-width="3" marker-end="url(#arrN)"/>
+        <text x="378" y="112" font-size="13" font-weight="700" fill="#c0563a" text-anchor="middle">真假样本都加噪 σ</text>
+        <text x="378" y="130" font-size="12" fill="#c0563a" text-anchor="middle">（随训练退火 → 0）</text>
+        <text x="592" y="30" font-size="15" font-weight="700" fill="#3a4654" text-anchor="middle">加噪后：重叠了</text>
+        <ellipse cx="548" cy="142" rx="86" ry="76" fill="#9ec5ec" opacity="0.55" stroke="#2a6fb5" stroke-width="2"/>
+        <ellipse cx="638" cy="142" rx="86" ry="76" fill="#f3b48c" opacity="0.5" stroke="#d97757" stroke-width="2"/>
+        <line x1="592" y1="52" x2="592" y2="234" stroke="#2f8a5b" stroke-width="3"/>
+        <text x="502" y="243" font-size="14" font-weight="700" fill="#1a4f8a">p<tspan font-size="11" dy="3">σ</tspan><tspan dy="-3">∗p</tspan><tspan font-size="11" dy="3">Y</tspan></text>
+        <text x="668" y="243" font-size="14" font-weight="700" fill="#c0563a">p<tspan font-size="11" dy="3">σ</tspan><tspan dy="-3">∗q</tspan><tspan font-size="11" dy="3">θ</tspan></text>
+        <text x="592" y="264" font-size="13" fill="#6b7785" text-anchor="middle">最优判别器唯一（绿线）→ 梯度稳</text>
+      </svg>
+      <figcaption>实例噪声 = 给两条细线"吹气"：变胖、重叠，判别器的最优解从"一大堆"变成"唯一"，训练随之稳定（论文 Figure 6 的直觉版）。</figcaption>
+    </figure>
+    <details><summary>自测：与 SRGAN 最本质的三点区别？</summary>
+      <div class="a">① <b>一致性</b>：SRGAN 无显式 LR 一致性约束（靠成对内容损失间接保证），AffGAN 在无噪线性模型下由仿射投影<b>硬保证</b>；② <b>数据</b>：SRGAN 必须成对 LR–HR，AffGAN 目标原则上只需 p<sub>X</sub>、p<sub>Y</sub> 的样本和已知 A；③ <b>理论</b>：SRGAN 是"对抗+感知损失提质"的经验组合，AffGAN 从摊销 MAP 出发推导出"为什么可以用生成式目标"。</div>
+    </details>
+  </div>
+
+  <div class="card">
+    <h3><span class="pill blue">卡 5</span>去噪 = 学对数密度的梯度（score）</h3>
+    <div class="formula"><span class="var">( f*(ỹ) − ỹ ) / σ² ≈ ∇<sub>ỹ</sub> log p<sub>Y</sub>(ỹ)</span>
+      <span class="say">读法：去噪输出减带噪输入、除以 sigma 平方，约等于对数密度的梯度（仅小高斯噪声极限下成立）</span></div>
+    <figure class="svgfig">
+      <svg viewBox="0 0 720 255" role="img" aria-label="去噪残差指向流形示意">
+        <defs>
+          <marker id="arrS" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 Z" fill="#d97757"/>
+          </marker>
+        </defs>
+        <path d="M60,150 C220,55 500,55 660,150" fill="none" stroke="#cfe2f5" stroke-width="46" stroke-linecap="round"/>
+        <path d="M60,150 C220,55 500,55 660,150" fill="none" stroke="#2a6fb5" stroke-width="1.8" opacity="0.7"/>
+        <text x="70" y="42" font-size="15" font-weight="700" fill="#1a4f8a">数据高密度区域（真实图像流形）</text>
+        <circle cx="300" cy="205" r="9" fill="#d97757"/>
+        <text x="288" y="230" font-size="15" font-weight="700" fill="#c0563a" text-anchor="end">带噪输入 ỹ = y + σε</text>
+        <line x1="306" y1="196" x2="352" y2="92" stroke="#d97757" stroke-width="3.5" marker-end="url(#arrS)"/>
+        <text x="312" y="142" font-size="14" font-weight="700" fill="#c0563a" text-anchor="end">残差 ∝ 对数密度梯度</text>
+        <circle cx="360" cy="79" r="9" fill="#2f8a5b" stroke="#fff" stroke-width="2"/>
+        <text x="380" y="72" font-size="15" font-weight="700" fill="#2f8a5b">去噪输出 f*(ỹ)</text>
+      </svg>
+      <figcaption>去噪器把带噪点"拉回"流形；这段位移除以 σ² 就近似指向密度上升最快的方向——不写出先验也能拿到梯度。</figcaption>
+    </figure>
+    <p><b>人话：</b>练好一个去噪器，它的"去噪方向"就近似指向"数据密度上升最快的方向"——不用写出先验密度，也能知道往哪儿走更像真图。AffDG 就是把这个梯度按链式法则反传去训练超分网络（论文自述：首次把去噪器输出显式反传训练另一个网络）。</p>
+    <details><summary>自测：这和今天的扩散模型是什么关系？</summary>
+      <div class="a"><b>思想同源</b>（score matching，可追溯到 Vincent 2011、Alain &amp; Bengio 2014），扩散模型同样靠"去噪 ≈ 估计 score"。但<b>训练流程不同</b>：这里是用冻结去噪器的梯度做引导训练前馈网络，不是完整的多步加噪-去噪生成过程。回答时点到"同源但非同一方法"即可。</div>
+    </details>
+  </div>
+</section>
+
+<!-- ④ 公式 -->
+<section id="eq">
+  <h2 class="sec">④ 六个关键公式（含"照着念"读法）</h2>
+  <p class="secsub">讲公式的铁律：先中文、后符号。每条下面灰字就是你嘴里要说的话。</p>
+
+  <div class="card">
+    <h3>式 (4) · MAP 的贝叶斯分解</h3>
+    <div class="formula"><span class="var">log p(y|x) = log p(x|y) + log p<sub>Y</sub>(y) − log p<sub>X</sub>(x)</span>
+      <span class="say">"后验 = 似然 + 图像先验 − 一个与 y 无关的常数（可忽略）"。剩两件麻烦事：似然要求 Ay=x 严格成立，先验难建模。</span></div>
+  </div>
+  <div class="card">
+    <h3>式 (7) · 仿射投影层（核心创新）</h3>
+    <div class="formula"><span class="var">g<sub>θ</sub>(x) = Π<sup>A</sup><sub>x</sub> f<sub>θ</sub>(x) = (I − A⁺A) f<sub>θ</sub>(x) + A⁺x</span>
+      <span class="say">"输出 = 零空间里的残差 + 直接上采样的基线解"。残差下采样恒为 0 → 一致性由结构保证。</span></div>
+  </div>
+  <div class="card">
+    <h3>式 (9) · 魔法一步：MAP 化归交叉熵</h3>
+    <div class="formula"><span class="var">argmax<sub>θ</sub> E<sub>x</sub> log p<sub>Y</sub>(Π<sup>A</sup><sub>x</sub> f<sub>θ</sub>(x)) = argmin<sub>θ</sub> H[q<sub>θ</sub>, p<sub>Y</sub>]</span>
+      <span class="say">"让输出在真实先验下平均对数概率最大 ⟺ 最小化输出分布与真实分布的交叉熵"。从此不需要成对数据 → 变成生成式建模。</span></div>
+  </div>
+  <div class="card">
+    <h3>式 (10) · 修正 GAN 目标</h3>
+    <div class="formula"><span class="var">L(G;D) = −E<sub>z</sub> log [ D(G(z)) / (1 − D(G(z))) ]</span>
+      <span class="say">"生成器不用原版损失，改用 log D 比 1−D"。附录 A 证明：D 最优时这等价于最小化反向 KL[q<sub>θ</sub>‖p<sub>Y</sub>]。</span></div>
+  </div>
+  <div class="card">
+    <h3>熵恒等式 · 交叉熵 vs KL 的差</h3>
+    <div class="formula"><span class="var">H[q<sub>θ</sub>, p<sub>Y</sub>] − KL[q<sub>θ</sub>‖p<sub>Y</sub>] = H[q<sub>θ</sub>]</span>
+      <span class="say">"我们想要的（交叉熵/纯 MAP）− GAN 实际最小化的（KL）= q theta 自己的熵"。GAN 额外奖励多样性，是有益副作用。</span></div>
+  </div>
+  <div class="card">
+    <h3>式 (12) · 去噪 ≈ score（AffDG 的根基）</h3>
+    <div class="formula"><span class="var">( f*<sub>σ</sub>(y+σε) − y ) / σ² ≈ ∂/∂y log p<sub>Y</sub>(y)</span>
+      <span class="say">"贝叶斯最优去噪器的残差除以 sigma 平方，近似对数密度梯度"——仅小噪声极限下成立，需退火。</span></div>
+  </div>
+</section>
+
+<!-- ⑤ 数字 -->
+<section id="num">
+  <h2 class="sec">⑤ 实验数字速记</h2>
+  <p class="secsub">只背标了 ★ 的六个数，其余知道相对关系即可。</p>
+
+  <div class="grid2">
+    <div>
+      <h3 style="font-family:var(--sans); font-size:17px; color:var(--blue);">Table 1 · 瑞士卷（交叉熵，10 次平均）</h3>
+      <table>
+        <tr><th>方法</th><th>H[q<sub>θ</sub>,p<sub>Y</sub>] ↓</th><th>一致性 ℓ<sub>MSE</sub>(x,Aŷ)</th></tr>
+        <tr class="hi"><td>MAP（暴力解）</td><td>★ 3.15</td><td>—</td></tr>
+        <tr><td>MSE</td><td class="bad">★ 9.10</td><td>1.25·10⁻²</td></tr>
+        <tr><td>MAE</td><td class="bad">6.30</td><td>4.04·10⁻²</td></tr>
+        <tr><td><b>AffGAN</b></td><td class="win">★ 4.10</td><td class="win">0.0</td></tr>
+        <tr><td>SoftGAN</td><td>4.25</td><td>8.87·10⁻²</td></tr>
+        <tr><td><b>AffDG</b></td><td class="win">★ 3.81</td><td class="win">0.0</td></tr>
+        <tr><td>SoftDG</td><td>4.19</td><td>1.01·10⁻¹</td></tr>
+      </table>
+      <p style="font-size:14.5px; color:var(--gray); font-family:var(--sans);">要点：Aff 系一致性恰为 0（结构保证）；Aff 普遍优于 Soft；MSE/MAE 差是因为它们根本不最小化交叉熵。</p>
+
+    </div>
+    <div>
+      <h3 style="font-family:var(--sans); font-size:17px; color:var(--blue);">Table 2 · CelebA 4×</h3>
+      <table>
+        <tr><th>方法</th><th>SSIM</th><th>PSNR</th><th>ℓ<sub>MSE</sub>(x,Aŷ)</th></tr>
+        <tr><td>MSE</td><td>0.90</td><td>26.30</td><td>8.0·10⁻⁵</td></tr>
+        <tr><td>AffMSE</td><td class="win">★ 0.91</td><td class="win">★ 26.53</td><td class="win">1.6·10⁻¹⁰</td></tr>
+        <tr><td>SoftGAN</td><td>0.76</td><td>21.11</td><td class="bad">2.3·10⁻³</td></tr>
+        <tr class="hi"><td>AffGAN</td><td>0.81</td><td>23.02</td><td>9.1·10⁻¹⁰</td></tr>
+      </table>
+      <p style="font-size:14.5px; color:var(--gray); font-family:var(--sans);">要点：失真指标（PSNR/SSIM）MSE 系最高、AffGAN 却更锐利 → 感知–失真权衡；<b>本文没做人类评测</b>，措辞要留余地。一致性 Aff 比 Soft 好 6–7 个数量级。</p>
+    </div>
+  </div>
+
+  <figure class="svgfig">
+        <svg viewBox="0 0 760 315" role="img" aria-label="Table 1 交叉熵柱状图">
+          <line x1="329" y1="28" x2="329" y2="300" stroke="#8a6d2f" stroke-width="1.5" stroke-dasharray="5 4"/>
+          <text x="336" y="24" font-size="13" font-weight="700" fill="#8a6d2f">MAP 最优 = 3.15</text>
+          <text x="128" y="57" font-size="14" font-weight="700" fill="#8a6d2f" text-anchor="end">MAP</text>
+          <rect x="135" y="40" width="194" height="26" rx="4" fill="#d9b96a" stroke="#8a6d2f"/>
+          <text x="337" y="58" font-size="13" fill="#8a6d2f">3.15</text>
+          <text x="128" y="95" font-size="14" font-weight="700" fill="#2f8a5b" text-anchor="end">AffDG</text>
+          <rect x="135" y="78" width="234" height="26" rx="4" fill="#74b78f" stroke="#2f8a5b"/>
+          <text x="377" y="96" font-size="13" fill="#2f8a5b">3.81</text>
+          <text x="128" y="133" font-size="14" font-weight="700" fill="#2f8a5b" text-anchor="end">AffGAN</text>
+          <rect x="135" y="116" width="252" height="26" rx="4" fill="#74b78f" stroke="#2f8a5b"/>
+          <text x="395" y="134" font-size="13" fill="#2f8a5b">4.10</text>
+          <text x="128" y="171" font-size="14" fill="#6b7785" text-anchor="end">SoftDG</text>
+          <rect x="135" y="154" width="258" height="26" rx="4" fill="#c3cede" stroke="#9aa6b2"/>
+          <text x="401" y="172" font-size="13" fill="#6b7785">4.19</text>
+          <text x="128" y="209" font-size="14" fill="#6b7785" text-anchor="end">SoftGAN</text>
+          <rect x="135" y="192" width="261" height="26" rx="4" fill="#c3cede" stroke="#9aa6b2"/>
+          <text x="404" y="210" font-size="13" fill="#6b7785">4.25</text>
+          <text x="128" y="247" font-size="14" font-weight="700" fill="#c0563a" text-anchor="end">MAE</text>
+          <rect x="135" y="230" width="387" height="26" rx="4" fill="#e6a08b" stroke="#c0563a"/>
+          <text x="530" y="248" font-size="13" fill="#c0563a">6.30</text>
+          <text x="128" y="285" font-size="14" font-weight="700" fill="#c0563a" text-anchor="end">MSE</text>
+          <rect x="135" y="268" width="560" height="26" rx="4" fill="#e6a08b" stroke="#c0563a"/>
+          <text x="700" y="286" font-size="13" fill="#c0563a">9.10</text>
+        </svg>
+        <figcaption>交叉熵 H[q<sub>θ</sub>,p<sub>Y</sub>] 越短越好：AffDG / AffGAN 贴着 MAP 的金线，MSE / MAE 远远跑偏——一眼看懂 Table 1。</figcaption>
+      </figure>
+
+  <div class="card gold">
+    <h3>其余实验一句话版</h3>
+    <ul>
+      <li><b>设定</b>：全部 4× 超分；A = 9×9 高斯核、步长 4 的卷积；A⁺ 数值求解（亚像素卷积实现）。</li>
+      <li><b>Figure 2（概念验证）</b>：正确初始化的投影不损害性能，起步损失更低、训练更快；关键是 A⁺ 初始化成正确伪逆，冻住或可训练均可。</li>
+      <li><b>Figure 3（草地）</b>：AffGAN 最锐利、"统计上像草"；AffDG/AffLL 很糊 → 作者转向专攻 AffGAN。</li>
+      <li><b>Figure 5（ImageNet 32→128）</b>：整体锐利；名场面"<b>蛇变水</b>"——语义错但视觉合理，作者推测水纹在先验下密度更高。</li>
+      <li><b>附录 E</b>：AffDG/AffLL 会收敛但糊；密度模型 −4.10 bits/dim 已不错，但仍不够准到能当好"打分器"。</li>
+      <li><b>§5.6 反思</b>：众数依赖表示（换色彩空间答案会变）；高维高斯典型样本范数 ≈ √d 而众数范数 = 0 → 众数"非典型"；出路 = 从后验采样（附录 F 随机版 AffGAN ≈ 摊销变分推断）。</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ⑥ QA -->
+<section id="qa">
+  <h2 class="sec">⑥ Q&amp;A 预演：最可能被问的 8 个问题</h2>
+  <p class="secsub">点开看参考答法。答不上的问题，诚实说"论文没做这个实验，我的理解是……"永远比编一个强。</p>
+
+  <details><summary>为什么 GAN 最小化的是 KL 而不是交叉熵？差那个熵项要紧吗？</summary>
+    <div class="a">修正更新规则在最优判别器下对应反向 KL（附录 A）；与纯 MAP 交叉熵目标恰差 H[q<sub>θ</sub>]。<b>方向上</b>这是好事：纯 MAP 会把所有概率压向众数，熵项奖励整体多样性；瑞士卷实验里 AffGAN 交叉熵 4.10 也确实接近 MAP 的 3.15，说明实践中偏差不大。</div>
+  </details>
+  <details><summary>A 不知道怎么办？真实退化不是高斯下采样呢？</summary>
+    <div class="a">诚实回答：本文<b>明确假设无噪线性模型 x=Ay 且 A 已知</b>（实验中 A 固定为高斯核）。A 未知或有噪声时投影不再严格成立——这是方法边界。可以补一句：软约束版（SoftGAN）不需要精确 A，但一致性和效果都更差，见 Table 1/2。</div>
+  </details>
+  <details><summary>伪逆 A⁺ 是怎么得到的？是 Aᵀ 吗？</summary>
+    <div class="a">不是。A⁺ ≠ Aᵀ。论文把 A⁺ 实现为转置/亚像素卷积，核参数通过数值优化求得：最小化 ‖Ay−ABAy‖² + ‖Bx−BABx‖²（附录 B，蒙特卡洛 + SGD），收敛残差 10⁻¹²–10⁻⁸。Figure 2 还显示：A⁺ 必须<b>初始化正确</b>，否则性能受损。</div>
+  </details>
+  <details><summary>MAP 真是我们想要的吗？作者自己不是也批评了？</summary>
+    <div class="a">对，§5.6 两点自我批评：① 众数依赖表示（换坐标/色彩空间答案会变，但 AffGAN 因熵项对此更有韧性）；② 高维下众数非典型（肥皂泡：典型样本范数 ≈ √d，众数范数 0）。作者给的出路是附录 F：给生成器加噪声 z，随机版 AffGAN ≈ 摊销变分推断，从近似后验采样而非只取众数。
+      <figure class="svgfig">
+        <svg viewBox="0 0 640 245" role="img" aria-label="高维高斯肥皂泡示意">
+          <circle cx="150" cy="122" r="85" fill="none" stroke="#cfe2f5" stroke-width="18"/>
+          <circle cx="150" cy="122" r="85" fill="none" stroke="#2a6fb5" stroke-width="1.8" stroke-dasharray="6 5"/>
+          <g fill="#2a6fb5">
+            <circle cx="235" cy="122" r="5"/><circle cx="223.6" cy="164.5" r="5"/><circle cx="192.5" cy="195.6" r="5"/>
+            <circle cx="150" cy="207" r="5"/><circle cx="107.5" cy="195.6" r="5"/><circle cx="76.4" cy="164.5" r="5"/>
+            <circle cx="65" cy="122" r="5"/><circle cx="76.4" cy="79.5" r="5"/><circle cx="107.5" cy="48.4" r="5"/>
+            <circle cx="150" cy="37" r="5"/><circle cx="192.5" cy="48.4" r="5"/><circle cx="223.6" cy="79.5" r="5"/>
+          </g>
+          <circle cx="150" cy="122" r="7" fill="#c0563a"/>
+          <line x1="226" y1="78" x2="262" y2="70" stroke="#2a6fb5" stroke-width="1.2"/>
+          <text x="268" y="74" font-size="14" font-weight="700" fill="#1a4f8a">典型样本都挤在薄壳上：‖y‖ ≈ √d</text>
+          <line x1="158" y1="122" x2="262" y2="152" stroke="#c0563a" stroke-width="1.2"/>
+          <text x="268" y="156" font-size="14" font-weight="700" fill="#c0563a">众数在正中心：‖y‖ = 0，几乎没有样本</text>
+          <text x="150" y="238" font-size="13" fill="#6b7785" text-anchor="middle">高维标准高斯 N(0, I<tspan font-size="10" dy="3">d</tspan><tspan dy="-3">)</tspan></text>
+        </svg>
+        <figcaption>"肥皂泡"：高维高斯的概率质量全在薄壳上，密度最高的中心反而空——所以"概率最高" ≠ "看起来典型"。</figcaption>
+      </figure>
+    </div>
+  </details>
+  <details><summary>和 SRGAN 比到底谁好？</summary>
+    <div class="a">论文没有和 SRGAN 做直接数值对比，比的是不同损失下的同架构模型。区别在定位：SRGAN 是"对抗+感知损失"的工程组合、需成对数据；AffGAN 给出概率解释（摊销 MAP）+ 结构一致性保证，原则上不需成对数据。两者互补，论文也说自己为 Ledig 等的 GAN-SR 路线"提供了理论动机"。</div>
+  </details>
+  <details><summary>实例噪声和扩散模型的加噪是一回事吗？</summary>
+    <div class="a">直觉相通（加噪拓宽支撑、让学习信号更平滑，且都退火），但目的不同：实例噪声是为了让<b>判别器</b>的最优解唯一、稳定 GAN 训练；扩散模型的噪声调度定义了<b>生成过程本身</b>。同源不同用。</div>
+  </details>
+  <details><summary>确定性模型怎么谈"多样性"？同一个 x 不是只有一个输出吗？</summary>
+    <div class="a">对——熵奖励作用于<b>边缘输出分布 q<sub>θ</sub></b>（跨不同 x 的整体多样性），单个 x 仍只有一个确定输出。想要"同一 x 多个解"要用附录 F 的随机版（输入加 z）。这个区分要主动说清，不然容易被抓。</div>
+  </details>
+  <details><summary>为什么 AffDG / AffLL 理论漂亮却输了？</summary>
+    <div class="a">都收敛但糊（附录 E）。AffDG：score 估计只在小噪声极限准，大噪声方向粗、小噪声覆盖窄，退火难调、易发散；AffLL：准的密度模型在数据流形附近太"陡"，训练初期几乎没有可用梯度；且密度模型（−4.10 bits/dim）仍不够准到能当可靠打分器。GAN 的判别器信号相对"平滑可用"，所以赢在工程可行性。</div>
+  </details>
+</section>
+
+<!-- ⑦ 红线 -->
+<section id="red">
+  <h2 class="sec">⑦ 红线清单：讲台上绝不能说错的话</h2>
+  <p class="secsub">左边是错误说法（✗），加粗绿字是正确版本。这些都是审阅时校准过的表述。</p>
+  <div class="card">
+    <ul class="redline">
+      <li>"下采样核 A 是学出来的" → <b class="ok">A 是固定的 9×9 高斯核；只有 A⁺ 是数值优化求得的</b>（Figure 2d 两个核别说反）。</li>
+      <li>"GAN 最小化的就是我们的 MAP 目标" → <b class="ok">GAN 最小化反向 KL，与交叉熵 MAP 目标恰差一个熵项 H[q<sub>θ</sub>]，是替代目标</b>。</li>
+      <li>"熵奖励缓解了 mode collapse（论文说的）" → <b class="ok">论文原话是"偏好更高熵、更多样的解"；mode collapse 是我们的引申</b>。</li>
+      <li>"AffGAN 视觉效果最好，已被人类评测证实" → <b class="ok">本文没有人类偏好实验；说"本文实验中视觉上最锐利/最佳"</b>。</li>
+      <li>"输出保证等于后验众数" → <b class="ok">是"近似 MAP 解"；且一致性保证的前提是无噪线性模型 + A⁺ 准确</b>。</li>
+      <li>"AffDG 的去噪器全程一套参数冻住" → <b class="ok">不被超分损失更新，但训练中按退火计划不断换用更低噪声水平预训练的 DAE 参数</b>。</li>
+      <li>"附录 F 配图见 Figure 8" → <b class="ok">Figure 8 是 ImageNet 的额外结果图；附录 F 没有配图</b>。</li>
+      <li>"MLE = 无信息先验下的 MAP" → <b class="ok">说"均匀（平坦）先验下的 MAP"更严谨</b>。</li>
+      <li>"Figure 1 里的彩色点是数据点" → <b class="ok">是各方法的超分输出；且图 a 蓝点=MAP、图 b 蓝点=AffGAN，别混</b>。</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ⑧ 检查单 -->
+<section id="final">
+  <h2 class="sec">⑧ 讲前最后检查单</h2>
+  <div class="grid2">
+    <div class="card">
+      <h3>内容过关（7/10 晚自测）</h3>
+      <ul class="check">
+        <li>能 30 秒讲完"一句话主线"（本页 ① 的开场白）</li>
+        <li>能脱稿推出式 (7) 为什么保证 Aŷ = x（卡 2 自测）</li>
+        <li>能说清交叉熵 vs KL 差在哪、为什么这里不等价（卡 3）</li>
+        <li>六个 ★ 数字张口就来：3.15 / 9.10 / 4.10 / 3.81 / 0.91 / 26.53</li>
+        <li>三个钩子会讲：蛇变水（Fig 5）、指标高≠更锐利（Table 2）、肥皂泡（§5.6）</li>
+        <li>红线清单 9 条全部过一遍</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>现场执行（7/11 当天）</h3>
+      <ul class="check">
+        <li>index.html 本地能打开、公式字体图片正常（KaTeX 已本地化在 katex/ 目录，<b>断网也能用；拷贝时记得连 katex/ 和 images/ 一起拷</b>）</li>
+        <li>最慢三页：第 7 页（瑞士卷）、第 12 页（投影）、第 13 页（交叉熵）——每页多停 30 秒</li>
+        <li>扉页（3/9/23/29 页）当换气点，停两秒再翻</li>
+        <li>公式一律"先中文后符号"；θ=theta、σ=sigma、"A 的伪逆"统一读法</li>
+        <li>被问倒时的兜底句："论文没有覆盖这一点，我的理解是……也欢迎会后讨论"</li>
+        <li>结尾把主线再念一遍收口：MAP → 仿射投影 → 交叉熵 → GAN</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>AffGAN 快速入门 · 配合 index.html / 演讲稿_朗读版.md / AffGAN_学习资源指南.pdf 使用 · 数字与表述已对照论文原文核准</footer>
+
+</body>
+</html>
