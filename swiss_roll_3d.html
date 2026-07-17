@@ -1,0 +1,1010 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>瑞士卷玩具世界 · 九步看懂 MAP 为什么赢（AffGAN 图 1 的三维导览版）</title>
+<link rel="stylesheet" href="katex/katex.min.css">
+<script defer src="katex/katex.min.js"></script>
+<script defer src="katex/contrib/auto-render.min.js"></script>
+<style>
+  :root{
+    --surface-1:#1a1a19; --page:#0d0d0d;
+    --ink-1:#ffffff; --ink-2:#c3c2b7; --ink-3:#898781;
+    --hairline:#2c2c2a; --border:rgba(255,255,255,.10);
+    --c-map:#3987e5;   /* 蓝 · MAP 众数（论文中 AffGAN 的颜色） */
+    --c-mae:#199e70;   /* 青绿 · MAE 中位数 */
+    --c-mse:#e66767;   /* 红 · MSE 均值 */
+    --c-line:#d95926;  /* 橙 · 约束 Ay=x */
+    --c-post:#c98500;  /* 黄 · 后验切片 */
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{background:var(--page);color:var(--ink-1);
+       font:14px/1.7 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;}
+  #app{display:flex;height:100%}
+  #scene{position:relative;flex:1;min-width:0;background:var(--surface-1)}
+  #scene canvas{display:block}
+  #labels{position:absolute;inset:0;overflow:hidden}
+  #tooltip{position:absolute;display:none;pointer-events:none;z-index:20;
+    background:rgba(13,13,13,.88);border:1px solid var(--border);border-radius:8px;
+    padding:6px 10px;font-size:12px;color:var(--ink-2);white-space:nowrap;
+    font-variant-numeric:tabular-nums}
+  #tooltip b{color:var(--ink-1)}
+
+  .mlabel{pointer-events:none;font-weight:600;font-size:12px;color:var(--ink-1);
+    background:rgba(13,13,13,.78);border:1px solid var(--border);
+    padding:2px 8px;border-radius:10px;white-space:nowrap}
+  .mlabel i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px}
+  .mlabel.map i{background:var(--c-map)} .mlabel.mae i{background:var(--c-mae)}
+  .mlabel.mse i{background:var(--c-mse)}
+  .stat{font-size:12.5px;color:var(--ink-2);font-variant-numeric:tabular-nums;margin:4px 0}
+  .stat b{color:var(--ink-1)}
+  .pixrow{display:flex;align-items:center;gap:10px;margin:8px 0 4px;flex-wrap:wrap}
+  .pixcell{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;color:var(--ink-3);text-align:center}
+  .pixcell span i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:3px;vertical-align:1px}
+  .sq{width:30px;height:30px;border:1px solid var(--border);border-radius:6px;background:#3a3a37}
+  .pixarrow{color:var(--ink-3);font-size:12px;white-space:nowrap}
+  .dlabel{pointer-events:none;font-size:12px;color:var(--ink-2);
+    background:rgba(13,13,13,.7);border:1px solid var(--border);
+    padding:1px 7px;border-radius:9px;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .axlabel{pointer-events:none;color:var(--ink-3);font-size:13px;font-style:italic}
+
+  #panel{width:420px;flex:none;overflow-y:auto;padding:18px 18px 40px;
+    background:var(--page);border-left:1px solid var(--hairline)}
+  #panel h1{font-size:17px;margin:0 0 2px}
+  #panel .sub{color:var(--ink-3);font-size:12px;margin:0 0 14px}
+  .card{background:var(--surface-1);border:1px solid var(--hairline);
+    border-radius:10px;padding:12px 14px;margin-bottom:12px}
+  .card h2{font-size:13px;margin:0 0 8px;color:var(--ink-2);font-weight:600}
+
+  /* —— 导览 —— */
+  #tour{border-color:#3a3a37}
+  #step-head{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
+  #step-no{font-size:12px;color:var(--c-post);font-weight:700;white-space:nowrap}
+  #step-title{font-size:15px;font-weight:700;color:var(--ink-1)}
+  #step-body{font-size:13px;color:var(--ink-2);margin-top:6px}
+  #step-body p{margin:7px 0}
+  #step-body em{color:var(--ink-1);font-style:normal;font-weight:600}
+  #step-body ul{margin:6px 0;padding-left:18px}
+  #step-body li{margin:5px 0}
+  #step-body .katex{font-size:1.02em}
+  .task{margin-top:9px;padding:7px 10px;border-radius:8px;font-size:12.5px;
+    background:rgba(217,89,38,.10);border:1px solid rgba(217,89,38,.35);color:var(--ink-1)}
+  #step-nav{display:flex;align-items:center;gap:10px;margin-top:12px}
+  #step-nav button{flex:none}
+  #dots{display:flex;gap:6px;flex:1;justify-content:center}
+  #dots span{width:8px;height:8px;border-radius:50%;background:#3a3a37;cursor:pointer}
+  #dots span.on{background:var(--c-post)}
+  #dots span.done{background:#6b6a64}
+  .hint{font-size:11.5px;color:var(--ink-3);margin-top:8px;text-align:center}
+
+  label.row{display:flex;align-items:center;gap:8px;margin:6px 0;color:var(--ink-2)}
+  .lb{white-space:nowrap;flex:none}
+  select,button{font:inherit;color:var(--ink-1);background:#242423;
+    border:1px solid var(--hairline);border-radius:7px;padding:4px 8px}
+  select{flex:1;min-width:0}
+  button{cursor:pointer;white-space:nowrap} button:hover{background:#2e2e2c}
+  button:disabled{opacity:.4;cursor:default}
+  input[type=range]{flex:1;accent-color:var(--c-line)}
+  input[type=checkbox]{accent-color:var(--c-map)}
+  #xval{font-variant-numeric:tabular-nums;color:var(--ink-1);font-weight:600;min-width:52px}
+
+  table{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
+  th{color:var(--ink-3);font-weight:500;text-align:right;padding:3px 4px;border-bottom:1px solid var(--hairline)}
+  td{text-align:right;padding:4px;color:var(--ink-2)}
+  th:first-child,td:first-child{text-align:left}
+  td .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+  #nseg{color:var(--ink-2);font-size:12.5px}
+  #nseg b{color:var(--c-post)}
+  #degnote{display:none;color:var(--c-line);font-size:12.5px;margin-top:6px}
+  .ce{font-size:13px;color:var(--ink-2)}
+  .ce .num{font-weight:700;color:var(--ink-1);font-variant-numeric:tabular-nums}
+  .note{font-size:12px;color:var(--ink-3);margin-top:8px}
+  .legend{list-style:none;margin:0;padding:0;font-size:12.5px;color:var(--ink-2)}
+  .legend li{margin:4px 0}
+  .sw{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:7px;vertical-align:-2px}
+  @media (max-width:900px){ #app{flex-direction:column} #panel{width:100%;border-left:0;border-top:1px solid var(--hairline)} #scene{min-height:55vh} }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://fastly.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+    "three/addons/": "https://fastly.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="app">
+  <div id="scene"><div id="tooltip"></div></div>
+
+  <div id="panel">
+    <h1>瑞士卷玩具世界：九步看懂 MAP 为什么赢</h1>
+    <p class="sub">AffGAN（ICLR 2017）论文图 1 的三维导览版 —— 把整篇论文的思想压缩到一个两像素的沙盘里</p>
+
+    <div class="card" id="tour">
+      <div id="step-head"><span id="step-no"></span><span id="step-title"></span></div>
+      <div id="step-body"></div>
+      <div id="step-nav">
+        <button id="btn-prev">← 上一步</button>
+        <div id="dots"></div>
+        <button id="btn-next">下一步 →</button>
+      </div>
+      <div class="hint">键盘 ←/→ 也可翻页 · 鼠标拖拽旋转视角，滚轮缩放</div>
+    </div>
+
+    <div class="card" id="card-ctrl">
+      <h2>控制</h2>
+      <label class="row" id="row-mode"><span class="lb">下采样算子 A：</span>
+        <select id="mode">
+          <option value="avg">x = (y₁+y₂)/2（论文：取平均）</option>
+          <option value="drop">x = y₁（思考题：丢掉 y₂）</option>
+        </select>
+      </label>
+      <label class="row" id="row-x"><span class="lb">观测 x：</span>
+        <input type="range" id="xslider" min="-8" max="8" step="0.02" value="0.5">
+        <span id="xval">0.50</span>
+        <button id="play" title="让 x 自动来回扫描">▶ 扫描</button>
+      </label>
+      <label class="row" id="row-wall"><input type="checkbox" id="ck-wall" checked> 约束平面（Ay = x 的全部合法解）</label>
+      <label class="row" id="row-post"><input type="checkbox" id="ck-post" checked> 后验切片曲线（先验沿约束线的切片）</label>
+      <label class="row" id="row-traj"><input type="checkbox" id="ck-traj" checked> 三种解的轨迹（对应论文图 1b）</label>
+      <label class="row" id="row-grad"><input type="checkbox" id="ck-grad"> 梯度场 ∇log p_Y（AffDG 的“罗盘”）</label>
+    </div>
+
+    <div class="card" id="card-pix">
+      <h2>像素视角 · 一个点 = 一张两像素图</h2>
+      <div class="stat" id="px-hov">把鼠标移到场景上，实时把那个点翻译成“图” ↓</div>
+      <div class="pixrow">
+        <div class="pixcell"><div class="sq" id="sq-h1"></div><span>像素 y₁</span></div>
+        <div class="pixcell"><div class="sq" id="sq-h2"></div><span>像素 y₂</span></div>
+        <span class="pixarrow">—— A 下采样 →</span>
+        <div class="pixcell"><div class="sq" id="sq-hx"></div><span>低清 x</span></div>
+      </div>
+      <div id="px-strat" style="display:none">
+        <div class="note" style="margin-top:10px">同一观测 x 下，三种策略给出的三张“两像素图”——下采样后全都精确等于 x，图却完全不同：</div>
+        <div class="pixrow">
+          <div class="pixcell"><div class="sq" id="sq-map1"></div><span><i style="background:var(--c-map)"></i>MAP y₁</span></div>
+          <div class="pixcell"><div class="sq" id="sq-map2"></div><span><i style="background:var(--c-map)"></i>y₂</span></div>
+          <div class="pixcell"><div class="sq" id="sq-mae1"></div><span><i style="background:var(--c-mae)"></i>MAE y₁</span></div>
+          <div class="pixcell"><div class="sq" id="sq-mae2"></div><span><i style="background:var(--c-mae)"></i>y₂</span></div>
+          <div class="pixcell"><div class="sq" id="sq-mse1"></div><span><i style="background:var(--c-mse)"></i>MSE y₁</span></div>
+          <div class="pixcell"><div class="sq" id="sq-mse2"></div><span><i style="background:var(--c-mse)"></i>y₂</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="card-live">
+      <div id="nseg">约束线切到 <b>–</b> 段高密度区（后验大约有这么多个峰）</div>
+      <div id="degnote">此 x 下约束线几乎不与瑞士卷相交，后验退化。</div>
+    </div>
+
+    <div class="card" id="card-stats">
+      <h2>当前切片 · 三种策略的落点</h2>
+      <table>
+        <thead><tr><th>策略</th><th>(y₁, y₂)</th><th>p_Y(ŷ)</th><th>−ln p_Y</th></tr></thead>
+        <tbody>
+          <tr><td><span class="dot" style="background:var(--c-map)"></span>MAP 众数</td><td id="p-map">–</td><td id="d-map">–</td><td id="n-map">–</td></tr>
+          <tr><td><span class="dot" style="background:var(--c-mae)"></span>MAE 中位数</td><td id="p-mae">–</td><td id="d-mae">–</td><td id="n-mae">–</td></tr>
+          <tr><td><span class="dot" style="background:var(--c-mse)"></span>MSE 均值</td><td id="p-mse">–</td><td id="d-mse">–</td><td id="n-mse">–</td></tr>
+        </tbody>
+      </table>
+      <p class="note">MAP 行就是论文里的“暴力 MAP”：这里 p_Y 已知，可以沿约束线直接穷举密度最高点。</p>
+    </div>
+
+    <div class="card" id="card-ce">
+      <h2>模拟 Table 1 · 交叉熵 H[q, p_Y]（nats，对 p_X 加权，x∈[−8,8]）</h2>
+      <p class="ce">
+        MAP 众数 <span class="num" id="ce-map">–</span> ·
+        MAE 中位数 <span class="num" id="ce-mae">–</span> ·
+        MSE 均值 <span class="num" id="ce-mse">–</span>
+      </p>
+      <p class="note">论文 Table 1（真实实验）：暴力 MAP 3.15 · AffGAN 4.10 · AffDG 3.81 · MAE 6.30 · MSE 9.10 —— 与这里的排序一致。</p>
+    </div>
+
+    <div class="card" id="card-legend">
+      <h2>图例</h2>
+      <ul class="legend">
+        <li><span class="sw" style="background:linear-gradient(90deg,#0d366b,#3987e5,#b7d3f6)"></span>曲面高度与颜色 = 先验密度 p_Y(y)，山脊即瑞士卷</li>
+        <li><span class="sw" style="background:var(--c-line)"></span>橙色竖直平面 / 虚线 = 约束 Ay = x（二维版仿射子空间）</li>
+        <li><span class="sw" style="background:var(--c-post)"></span>黄色曲线 = 后验 p(y|x) ∝ 沿约束线的先验切片</li>
+        <li><span class="sw" style="background:var(--c-map)"></span>蓝 = MAP 众数　<span class="sw" style="background:var(--c-mae)"></span>青绿 = MAE 中位数　<span class="sw" style="background:var(--c-mse)"></span>红 = MSE 均值</li>
+        <li><span class="sw" style="background:#c3c2b7"></span>灰白短线 = ∇log p_Y 方向（暗→亮为箭头指向），处处指向山脊</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+/* ============ 1. 瑞士卷先验：480 个高斯核的混合 ============ */
+const T0 = 1.5 * Math.PI, T1 = 4.5 * Math.PI;   // 螺旋参数区间
+const SCALE = 0.85;                              // 最大半径 ≈ 12
+const SIGMA = 0.7;                               // 核标准差（螺旋带半宽）
+const NK = 480;
+const D = 13.5;                                  // 地面域 [-D, D]²
+const B = 13.2;                                  // 约束线裁剪边界
+const GN = 221;                                  // 密度网格顶点数/边
+const STEP = 2 * D / (GN - 1);
+const HMAX = 3.4;                                // 密度峰对应的场景高度
+const XMIN = -8, XMAX = 8;
+const INV2S2 = 1 / (2 * SIGMA * SIGMA);
+const KNORM = 1 / (NK * 2 * Math.PI * SIGMA * SIGMA);
+
+const kernels = [];
+for (let i = 0; i < NK; i++) {
+  const t = T0 + (T1 - T0) * (i + 0.5) / NK;
+  kernels.push({ x: SCALE * t * Math.cos(t), z: SCALE * t * Math.sin(t) });
+}
+
+// 密度网格（splatting：每个核只写入自己 5σ 邻域）
+const grid = new Float32Array(GN * GN);
+{
+  const R = Math.ceil(5 * SIGMA / STEP);
+  for (const k of kernels) {
+    const ci = Math.round((k.x + D) / STEP), cj = Math.round((k.z + D) / STEP);
+    for (let j = Math.max(0, cj - R); j <= Math.min(GN - 1, cj + R); j++) {
+      const gz = -D + j * STEP, dz = gz - k.z;
+      for (let i = Math.max(0, ci - R); i <= Math.min(GN - 1, ci + R); i++) {
+        const gx = -D + i * STEP, dx = gx - k.x;
+        grid[j * GN + i] += Math.exp(-(dx * dx + dz * dz) * INV2S2);
+      }
+    }
+  }
+  for (let i = 0; i < grid.length; i++) grid[i] *= KNORM;
+}
+let rhoMax = 0;
+for (let i = 0; i < grid.length; i++) if (grid[i] > rhoMax) rhoMax = grid[i];
+const HS = HMAX / rhoMax;
+
+function rho(x, z) {              // 双线性插值查密度（画图、找众数用）
+  let fx = (x + D) / STEP, fz = (z + D) / STEP;
+  fx = Math.min(Math.max(fx, 0), GN - 1.001);
+  fz = Math.min(Math.max(fz, 0), GN - 1.001);
+  const i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j;
+  return (grid[j * GN + i] * (1 - u) + grid[j * GN + i + 1] * u) * (1 - v)
+       + (grid[(j + 1) * GN + i] * (1 - u) + grid[(j + 1) * GN + i + 1] * u) * v;
+}
+function rhoExact(x, z) {         // 精确混合密度（报数字、算交叉熵用）
+  let s = 0;
+  for (const k of kernels) {
+    const dx = x - k.x, dz = z - k.z, d2 = dx * dx + dz * dz;
+    if (d2 < 25) s += Math.exp(-d2 * INV2S2);
+  }
+  return s * KNORM;
+}
+const nll = p => -Math.log(Math.max(rhoExact(p[0], p[1]), 1e-30));
+
+/* ============ 2. 约束线 Ay = x：切片、均值 / 中位数 / 众数 ============ */
+const MODES = { avg: [0.5, 0.5], drop: [1, 0] };
+let A = MODES.avg;
+
+function lineFor(x0, a) {
+  const n2 = a[0] * a[0] + a[1] * a[1];
+  const px = x0 * a[0] / n2, pz = x0 * a[1] / n2;
+  const il = 1 / Math.sqrt(n2);
+  const dx = -a[1] * il, dz = a[0] * il;
+  let t0 = -Infinity, t1 = Infinity;              // Liang–Barsky 裁剪到 [-B,B]²
+  for (const [p, d] of [[px, dx], [pz, dz]]) {
+    if (Math.abs(d) < 1e-12) { if (Math.abs(p) > B) return null; }
+    else {
+      let ta = (-B - p) / d, tb = (B - p) / d;
+      if (ta > tb) [ta, tb] = [tb, ta];
+      t0 = Math.max(t0, ta); t1 = Math.min(t1, tb);
+    }
+  }
+  return t1 > t0 ? { px, pz, dx, dz, t0, t1 } : null;
+}
+
+function solve(x0, a, M = 700) {
+  const L = lineFor(x0, a);
+  if (!L) return null;
+  const pts = new Float64Array(2 * M), w = new Float64Array(M);
+  let sum = 0, best = 0, bi = 0;
+  for (let m = 0; m < M; m++) {
+    const t = L.t0 + (L.t1 - L.t0) * m / (M - 1);
+    const x = L.px + t * L.dx, z = L.pz + t * L.dz;
+    pts[2 * m] = x; pts[2 * m + 1] = z;
+    const r = rho(x, z);
+    w[m] = r; sum += r;
+    if (r > best) { best = r; bi = m; }
+  }
+  if (best < rhoMax * 1e-7) return { L, pts, degenerate: true };
+  let mx = 0, mz = 0;
+  for (let m = 0; m < M; m++) { mx += w[m] * pts[2 * m]; mz += w[m] * pts[2 * m + 1]; }
+  mx /= sum; mz /= sum;
+  let acc = 0, mi = 0;
+  for (let m = 0; m < M; m++) { acc += w[m]; if (acc >= sum / 2) { mi = m; break; } }
+  let nseg = 0, inRun = false;                    // 高密度段数 ≈ 后验峰数
+  for (let m = 0; m < M; m++) {
+    const hi = w[m] > 0.15 * best;
+    if (hi && !inRun) nseg++;
+    inRun = hi;
+  }
+  return {
+    L, pts, w, nseg,
+    map:  [pts[2 * bi], pts[2 * bi + 1]],
+    med:  [pts[2 * mi], pts[2 * mi + 1]],
+    mean: [mx, mz],
+  };
+}
+
+function pX(x0, a) {              // x = Ay 的边缘密度（1 维混合高斯，可精确算）
+  const varx = SIGMA * SIGMA * (a[0] * a[0] + a[1] * a[1]);
+  const norm = 1 / (NK * Math.sqrt(2 * Math.PI * varx));
+  let s = 0;
+  for (const k of kernels) {
+    const d = x0 - (a[0] * k.x + a[1] * k.z);
+    s += Math.exp(-d * d / (2 * varx));
+  }
+  return s * norm;
+}
+
+function sweep(a) {               // 扫 x：轨迹点 + Table 1 式交叉熵
+  const NX = 241, rows = [];
+  let hMap = 0, hMean = 0, hMed = 0, W = 0;
+  for (let i = 0; i < NX; i++) {
+    const x0 = XMIN + (XMAX - XMIN) * i / (NX - 1);
+    const st = solve(x0, a, 500);
+    if (!st || st.degenerate) { rows.push(null); continue; }
+    rows.push(st);
+    const wx = pX(x0, a);
+    hMap += wx * nll(st.map); hMean += wx * nll(st.mean); hMed += wx * nll(st.med);
+    W += wx;
+  }
+  return { rows, ce: { map: hMap / W, mean: hMean / W, med: hMed / W } };
+}
+
+/* ============ 3. 场景 ============ */
+const COL = {
+  map: 0x3987e5, mae: 0x199e70, mse: 0xe66767,
+  line: 0xd95926, post: 0xc98500, surface: 0x1a1a19,
+};
+const sceneEl = document.getElementById('scene');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(COL.surface);
+scene.fog = new THREE.Fog(COL.surface, 55, 110);
+
+const camera = new THREE.PerspectiveCamera(45, 2, 0.1, 300);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+sceneEl.appendChild(renderer.domElement);
+
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.domElement.id = 'labels';
+sceneEl.appendChild(labelRenderer.domElement);
+
+const controls = new OrbitControls(camera, labelRenderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.maxPolarAngle = Math.PI / 2 + 0.05;
+controls.minDistance = 6;
+controls.maxDistance = 90;
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+sun.position.set(18, 30, 10);
+scene.add(sun);
+
+// —— 地面网格（第 1–2 步：还没有“地形”时的参考系）——
+const gridHelper = new THREE.GridHelper(2 * D, 18, 0x383835, 0x232322);
+gridHelper.position.y = -0.01;
+scene.add(gridHelper);
+
+// —— 坐标轴标签 ——
+function axisLabel(text, x, z) {
+  const div = document.createElement('div');
+  div.className = 'axlabel';
+  div.textContent = text;
+  const o = new CSS2DObject(div);
+  o.position.set(x, 0, z);
+  scene.add(o);
+}
+axisLabel('y₁（第 1 个像素的亮度）', D + 2.5, 0);
+axisLabel('y₂（第 2 个像素的亮度）', 0, D + 2.5);
+
+// —— 第 1 步：三张示例“图”（每张图 = 平面上一个点）——
+const demoDots = new THREE.Group();
+{
+  const pts = [[3.8, -2.8], [-6.5, 3.5], [5, 8]];
+  for (const [x, z] of pts) {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(0.24, 20, 14),
+      new THREE.MeshBasicMaterial({ color: 0xe1e0d9 }));
+    m.position.set(x, 0.24, z);
+    const div = document.createElement('div');
+    div.className = 'dlabel';
+    div.textContent = `一张“图”：y = (${x.toFixed(1)}, ${z.toFixed(1)})`;
+    const lab = new CSS2DObject(div);
+    lab.position.set(0, 0.7, 0);
+    lab.center.set(0.5, 1);
+    m.add(lab);
+    demoDots.add(m);
+  }
+  scene.add(demoDots);
+}
+
+// —— 第 2 步：从 p_Y 抽 3000 张“真图”撒在平面上 ——
+function gauss() {
+  let u = 0, v = 0;
+  while (!u) u = Math.random();
+  while (!v) v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+let cloud, cloudBaseH;
+{
+  const N = 3000;
+  const p = new Float32Array(N * 3);
+  cloudBaseH = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    const k = kernels[Math.floor(Math.random() * NK)];
+    const x = k.x + gauss() * SIGMA, z = k.z + gauss() * SIGMA;
+    p[3 * i] = x; p[3 * i + 1] = 0.05; p[3 * i + 2] = z;
+    cloudBaseH[i] = HS * rho(x, z);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(p, 3));
+  cloud = new THREE.Points(geo, new THREE.PointsMaterial({
+    color: 0x86b6ef, size: 0.17, transparent: true, opacity: 0.85, depthWrite: false,
+  }));
+  scene.add(cloud);
+}
+
+// —— 密度曲面（顺序色带：单一蓝色，暗→亮 = 低→高）——
+const STOPS = [
+  [0.00, '#1e2126'], [0.10, '#0d366b'], [0.28, '#184f95'], [0.48, '#256abf'],
+  [0.66, '#3987e5'], [0.84, '#6da7ec'], [1.00, '#b7d3f6'],
+].map(([v, h]) => [v, new THREE.Color(h)]);
+function colormap(v, out) {
+  for (let i = 1; i < STOPS.length; i++) {
+    if (v <= STOPS[i][0]) {
+      const [v0, c0] = STOPS[i - 1], [v1, c1] = STOPS[i];
+      return out.copy(c0).lerp(c1, (v - v0) / (v1 - v0));
+    }
+  }
+  return out.copy(STOPS[STOPS.length - 1][1]);
+}
+let surface, baseH;
+{
+  const geo = new THREE.PlaneGeometry(2 * D, 2 * D, GN - 1, GN - 1);
+  geo.rotateX(-Math.PI / 2);
+  const pos = geo.attributes.position;
+  baseH = new Float32Array(pos.count);
+  const colors = new Float32Array(pos.count * 3);
+  const c = new THREE.Color();
+  for (let k = 0; k < pos.count; k++) {
+    const x = pos.getX(k), z = pos.getZ(k);
+    const r = rho(x, z);
+    baseH[k] = HS * r;
+    colormap(Math.pow(r / rhoMax, 0.6), c);   // γ 提亮中段，同时保住谷底的暗
+    colors[3 * k] = c.r; colors[3 * k + 1] = c.g; colors[3 * k + 2] = c.b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  surface = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+    vertexColors: true, roughness: 0.88, metalness: 0,
+  }));
+  scene.add(surface);
+}
+// 第 3 步的“密度长成地形”动画：全局高度因子 0 → 1
+let heightF = -1, heightTarget = 0;
+function updateHeights() {
+  const pos = surface.geometry.attributes.position;
+  for (let k = 0; k < pos.count; k++) pos.setY(k, heightF * baseH[k]);
+  pos.needsUpdate = true;
+  surface.geometry.computeVertexNormals();
+  const cp = cloud.geometry.attributes.position;
+  for (let i = 0; i < cloudBaseH.length; i++) cp.setY(i, heightF * cloudBaseH[i] + 0.05);
+  cp.needsUpdate = true;
+}
+// 曲面上一点的贴地高度（满高度；带标记的元素只在地形升满后出现）
+const hAt = (x, z) => HS * rho(x, z);
+
+// —— 约束平面 + 地面虚线 ——
+const WALLH = 4.4;
+const wall = new THREE.Mesh(
+  new THREE.PlaneGeometry(1, 1),
+  new THREE.MeshBasicMaterial({ color: COL.line, transparent: true, opacity: 0.13, side: THREE.DoubleSide, depthWrite: false })
+);
+wall.renderOrder = 2;
+scene.add(wall);
+const baseLine = new THREE.Line(
+  new THREE.BufferGeometry(),
+  new THREE.LineDashedMaterial({ color: COL.line, dashSize: 0.5, gapSize: 0.32 })
+);
+scene.add(baseLine);
+
+// —— 后验切片曲线（黄色管，随 x 重建）——
+const postMat = new THREE.MeshBasicMaterial({ color: COL.post });
+let postTube = null;
+function rebuildPostTube(st) {
+  if (postTube) { postTube.geometry.dispose(); scene.remove(postTube); postTube = null; }
+  if (!st || st.degenerate) return;
+  const v3 = [];
+  const M = st.w.length;
+  for (let m = 0; m < M; m += 4) {
+    const x = st.pts[2 * m], z = st.pts[2 * m + 1];
+    v3.push(new THREE.Vector3(x, hAt(x, z) + 0.1, z));
+  }
+  const curve = new THREE.CatmullRomCurve3(v3);
+  postTube = new THREE.Mesh(new THREE.TubeGeometry(curve, 360, 0.09, 8), postMat);
+  scene.add(postTube);
+}
+
+// —— 三个策略标记（球 + 描边 + 落针线 + 标签）——
+function makeMarker(colorHex, text, cls, labelBelow = false) {
+  const g = new THREE.Group();
+  const sph = new THREE.Mesh(new THREE.SphereGeometry(0.28, 24, 16),
+    new THREE.MeshBasicMaterial({ color: colorHex }));
+  const halo = new THREE.Mesh(new THREE.SphereGeometry(0.28, 24, 16),
+    new THREE.MeshBasicMaterial({ color: COL.surface, side: THREE.BackSide }));
+  halo.scale.setScalar(1.3);
+  const pinGeo = new THREE.BufferGeometry().setFromPoints(
+    [new THREE.Vector3(), new THREE.Vector3(0, -1, 0)]);
+  const pin = new THREE.Line(pinGeo,
+    new THREE.LineBasicMaterial({ color: colorHex, transparent: true, opacity: 0.55 }));
+  const div = document.createElement('div');
+  div.className = 'mlabel ' + cls;
+  div.innerHTML = '<i></i>' + text;
+  const lab = new CSS2DObject(div);
+  // MAP/MAE 落点经常几乎重合，标签一上一下避免互相遮挡
+  lab.position.set(0, labelBelow ? -0.55 : 0.75, 0);
+  lab.center.set(0.5, labelBelow ? 0 : 1);
+  g.add(sph, halo, pin, lab);
+  scene.add(g);
+  return { g, pin };
+}
+const markers = {
+  map: makeMarker(COL.map, 'MAP 众数', 'map'),
+  mae: makeMarker(COL.mae, 'MAE 中位数', 'mae', true),
+  mse: makeMarker(COL.mse, 'MSE 均值', 'mse'),
+};
+function placeMarker(mk, p) {
+  const y = hAt(p[0], p[1]) + 0.34;
+  mk.g.visible = true;
+  mk.g.position.set(p[0], y, p[1]);
+  const pp = mk.pin.geometry.attributes.position;
+  pp.setY(1, -(y - 0.04));
+  pp.needsUpdate = true;
+}
+
+// —— 轨迹（图 1b）：众数轨迹会在山脊间跳变，按间断拆段建管 ——
+const trajMats = {
+  map: new THREE.MeshBasicMaterial({ color: COL.map }),
+  mae: new THREE.MeshBasicMaterial({ color: COL.mae }),
+  mse: new THREE.MeshBasicMaterial({ color: COL.mse }),
+};
+const trajGroup = new THREE.Group();
+scene.add(trajGroup);
+function buildTraj(rows) {
+  for (const child of [...trajGroup.children]) {
+    child.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+    trajGroup.remove(child);
+  }
+  for (const key of ['mse', 'mae', 'map']) {
+    let run = [];
+    const flush = () => {
+      if (run.length >= 2) {
+        const curve = new THREE.CatmullRomCurve3(
+          run.map(([x, z]) => new THREE.Vector3(x, hAt(x, z) + 0.07, z)));
+        trajGroup.add(new THREE.Mesh(
+          new THREE.TubeGeometry(curve, Math.min(400, run.length * 3), 0.065, 8), trajMats[key]));
+      }
+      run = [];
+    };
+    for (const st of rows) {
+      const p = st && !st.degenerate ? st[key === 'mse' ? 'mean' : key === 'mae' ? 'med' : 'map'] : null;
+      if (!p) { flush(); continue; }
+      if (run.length) {
+        const q = run[run.length - 1];
+        if (Math.hypot(p[0] - q[0], p[1] - q[1]) > 1.6) flush();
+      }
+      run.push(p);
+    }
+    flush();
+  }
+}
+
+// —— 梯度场 ∇log p_Y：暗端为尾、亮端为头，贴着曲面画 ——
+let gradField = null;
+function buildGradField() {
+  const P = [], C = [];
+  const tail = new THREE.Color('#52514e'), head = new THREE.Color('#e1e0d9');
+  const NGRID = 27, LEN = 0.32, h = 0.18;
+  for (let j = 0; j < NGRID; j++) for (let i = 0; i < NGRID; i++) {
+    const x = -12.4 + 24.8 * i / (NGRID - 1), z = -12.4 + 24.8 * j / (NGRID - 1);
+    const r = rho(x, z);
+    if (r < rhoMax * 1e-6) continue;
+    const gx = rho(x + h, z) - rho(x - h, z), gz = rho(x, z + h) - rho(x, z - h);
+    const gl = Math.hypot(gx, gz);
+    if (gl < 1e-14) continue;
+    const dx = gx / gl, dz = gz / gl;
+    const x0 = x - dx * LEN, z0 = z - dz * LEN, x1 = x + dx * LEN, z1 = z + dz * LEN;
+    P.push(x0, hAt(x0, z0) + 0.07, z0, x1, hAt(x1, z1) + 0.07, z1);
+    C.push(tail.r, tail.g, tail.b, head.r, head.g, head.b);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(C, 3));
+  gradField = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors: true }));
+  gradField.visible = false;
+  scene.add(gradField);
+}
+
+/* ============ 4. UI 与状态联动 ============ */
+const $ = id => document.getElementById(id);
+const ui = {
+  mode: $('mode'), slider: $('xslider'), xval: $('xval'), play: $('play'),
+  wall: $('ck-wall'), post: $('ck-post'), traj: $('ck-traj'), grad: $('ck-grad'),
+  nseg: $('nseg'), degnote: $('degnote'),
+};
+const rows = {
+  mode: $('row-mode'), x: $('row-x'), wall: $('row-wall'),
+  post: $('row-post'), traj: $('row-traj'), grad: $('row-grad'),
+};
+const cards = {
+  ctrl: $('card-ctrl'), live: $('card-live'), stats: $('card-stats'),
+  ce: $('card-ce'), legend: $('card-legend'),
+};
+const fmtP = p => `(${p[0].toFixed(2)}, ${p[1].toFixed(2)})`;
+const lum = v => {
+  const t = Math.max(0, Math.min(1, (v + D) / (2 * D)));
+  const c = Math.round(30 + 210 * t);
+  return `rgb(${c},${c},${c})`;
+};
+const setSq = (id, v) => { $(id).style.background = lum(v); };
+
+// 导览进度决定哪些元素“已经被介绍过”
+let allowC = false;       // 约束平面/切片是否已引入（第 4 步起）
+let showMarkers = false;  // 三种策略标记是否已引入（第 6 步起）
+
+function applyX(x0) {
+  ui.xval.textContent = x0.toFixed(2);
+  const st = solve(x0, A);
+  const ok = st && !st.degenerate;
+
+  if (st) {
+    const { L } = st;
+    const len = L.t1 - L.t0, tm = (L.t0 + L.t1) / 2;
+    const mx = L.px + tm * L.dx, mz = L.pz + tm * L.dz;
+    wall.scale.set(len, WALLH, 1);
+    wall.position.set(mx, WALLH / 2, mz);
+    wall.lookAt(mx - L.dz, WALLH / 2, mz + L.dx);
+    baseLine.geometry.dispose();
+    baseLine.geometry = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(L.px + L.t0 * L.dx, 0.04, L.pz + L.t0 * L.dz),
+      new THREE.Vector3(L.px + L.t1 * L.dx, 0.04, L.pz + L.t1 * L.dz),
+    ]);
+    baseLine.computeLineDistances();
+  }
+  wall.visible = allowC && ui.wall.checked && !!st;
+  baseLine.visible = allowC && ui.wall.checked && !!st;
+  rebuildPostTube(ok ? st : null);
+  if (postTube) postTube.visible = allowC && ui.post.checked;
+
+  ui.degnote.style.display = ok ? 'none' : 'block';
+  if (!ok) {
+    for (const mk of Object.values(markers)) mk.g.visible = false;
+    ui.nseg.innerHTML = '约束线切到 <b>0</b> 段高密度区';
+    $('px-strat').style.display = 'none';
+    return;
+  }
+  if (showMarkers) {
+    placeMarker(markers.map, st.map);
+    placeMarker(markers.mae, st.med);
+    placeMarker(markers.mse, st.mean);
+  } else {
+    for (const mk of Object.values(markers)) mk.g.visible = false;
+  }
+  ui.nseg.innerHTML = `约束线切到 <b>${st.nseg}</b> 段高密度区（后验大约有这么多个峰）`;
+
+  for (const [key, p] of [['map', st.map], ['mae', st.med], ['mse', st.mean]]) {
+    const d = rhoExact(p[0], p[1]);
+    $('p-' + key).textContent = fmtP(p);
+    $('d-' + key).textContent = d.toExponential(2);
+    $('n-' + key).textContent = (-Math.log(Math.max(d, 1e-30))).toFixed(2);
+  }
+
+  // 像素视角：三种策略落点的“两像素图”
+  $('px-strat').style.display = showMarkers ? '' : 'none';
+  if (showMarkers) {
+    setSq('sq-map1', st.map[0]);  setSq('sq-map2', st.map[1]);
+    setSq('sq-mae1', st.med[0]);  setSq('sq-mae2', st.med[1]);
+    setSq('sq-mse1', st.mean[0]); setSq('sq-mse2', st.mean[1]);
+  }
+}
+
+let curModeKey = null;
+function setMode(key) {           // 只有算子真的变了才重建轨迹与交叉熵
+  if (key === curModeKey) return;
+  curModeKey = key;
+  A = MODES[key];
+  ui.mode.value = key;
+  const { rows: rs, ce } = sweep(A);
+  buildTraj(rs);
+  $('ce-map').textContent = ce.map.toFixed(2);
+  $('ce-mae').textContent = ce.med.toFixed(2);
+  $('ce-mse').textContent = ce.mean.toFixed(2);
+}
+
+ui.mode.addEventListener('change', () => { setMode(ui.mode.value); applyX(parseFloat(ui.slider.value)); });
+ui.slider.addEventListener('input', () => { stopPlay(); applyX(parseFloat(ui.slider.value)); });
+ui.wall.addEventListener('change', () => applyX(parseFloat(ui.slider.value)));
+ui.post.addEventListener('change', () => { if (postTube) postTube.visible = allowC && ui.post.checked; });
+ui.traj.addEventListener('change', () => { trajGroup.visible = ui.traj.checked; });
+ui.grad.addEventListener('change', () => { if (gradField) gradField.visible = ui.grad.checked; });
+
+let playing = false, playDir = 1;
+function stopPlay() { playing = false; ui.play.textContent = '▶ 扫描'; }
+ui.play.addEventListener('click', () => {
+  playing = !playing;
+  ui.play.textContent = playing ? '⏸ 暂停' : '▶ 扫描';
+});
+
+/* ============ 5. 九步导览 ============ */
+// 每步的 cfg 是该步的“标准状态”：进入这一步时场景被摆成什么样、哪些控件已解锁
+const STEPS = [
+{
+  title: '一张图 = 一个点',
+  html: `
+  <p>真实照片有几百万个像素，一张图就是<em>几百万维空间中的一个点</em>——没法画出来。所以论文造了一个只有<em>两个像素</em>的玩具世界：一张“图”就是二维向量 $y=[y_1,\\,y_2]$，也就是<em>平面上的一个点</em>。</p>
+  <p>眼前这三个白点就是三张“图”。整个平面 $\\mathbb{R}^2$ 就是这个世界里“所有可能的图”的集合——绝大多数点是噪声，只有极少数“像一张真实照片”。哪些点像？下一步见。</p>
+  <div class="task">👉 记住这个对应关系：<b>点 = 图，坐标 = 像素亮度</b>。后面所有几何都建立在它上面。把鼠标移到平面上——右侧“像素视角”卡会实时把那个点翻译成一张两像素灰度图。</div>`,
+  cfg: { grid: true, demoDots: true, mode: 'avg', x: 0.5,
+         cam: [0.5, 36, 10], tgt: [0, 0, 0] },
+},
+{
+  title: '“真图”聚成瑞士卷',
+  html: `
+  <p>现在从“真实照片的分布”里抽 3000 张图撒到平面上。它们<em>不是均匀分布</em>的，而是聚成一条螺旋带——这就是人为设定的<em>先验分布</em> $p_Y$（瑞士卷）。带上的点算“像真实照片”，带外的点都是“假图”。</p>
+  <p>严格地说，这里 $p_Y(y)=\\frac{1}{480}\\sum_{i=1}^{480}\\mathcal{N}(y;\\,\\mu_i,\\,\\sigma^2 I)$：480 个小高斯沿螺旋排开。真实世界的对应物叫“自然图像流形”——所有真实照片在百万维空间里同样只占一条极薄的带子。</p>
+  <div class="task">👉 现在是俯视视角，正对应论文图 1 的二维画法。可以拖拽旋转确认：点云真的是平的。</div>`,
+  cfg: { grid: true, cloud: true, mode: 'avg', x: 0.5,
+         cam: [0.5, 38, 4], tgt: [0, 0, 0] },
+},
+{
+  title: '把概率密度画成海拔',
+  html: `
+  <p>一个个数点太笨了，改用<em>概率密度函数</em>描述：每一小块地面上落的点越密，$p_Y(y)$ 越大。本页动画把密度抬升成<em>第三维的高度</em>——瑞士卷长成了一圈圈山脊。</p>
+  <p>从此可以用地形语言翻译概率语言：<em>山脊上 = 高密度 = 像真图；谷底 ≈ 0 = 假图</em>。这是纸上画不出的第三维，也是这个页面对论文图 1 的升级。</p>
+  <div class="task">👉 把鼠标放到曲面任意位置：实时读出该点的 $p_Y(y)$ 和 $-\\ln p_Y(y)$。比较一下山脊和谷底差几个数量级。</div>`,
+  cfg: { cloud: true, surface: true, legend: true, mode: 'avg', x: 0.5,
+         cam: [18, 27, 25], tgt: [0, 0.5, 0] },
+},
+{
+  title: '下采样：低清图给的不是答案，是一条线',
+  html: `
+  <p>超分辨率的“下采样”在这里是两个像素取平均：$x=\\frac{y_1+y_2}{2}$，矩阵形式 $x=Ay$，$A=[\\tfrac12,\\ \\tfrac12]$。二维压成一维，信息<em>不可逆地丢了一半</em>。</p>
+  <p>关键一步来了：给定观测 $x=0.5$，满足约束的高清解不是一个点，而是<em>一整条直线</em> $y_2 = 2x - y_1$——橙色平面与地面的交线（术语：<em>仿射子空间</em>，高维图像里它是一个巨大的仿射平面）。这就是超分辨率“一对多”困境的最小复刻版。</p>
+  <div class="task">👉 拖动滑块移动 x，看这条约束线在地形上平移。注意：无论 x 是多少，合法解永远是一条线，从不坍缩成一个点。</div>`,
+  cfg: { surface: true, allowC: true, legend: true, mode: 'avg', x: 0.5,
+         rows: { x: true, wall: true }, cam: [21, 15, 26], tgt: [0, 1, 0] },
+},
+{
+  title: '后验 = 先验沿约束线的切片',
+  html: `
+  <p>一条线上的候选解无穷多，哪些更可信？贝叶斯公式给出后验：$p(y\\mid x)\\ \\propto\\ p(x\\mid y)\\,p_Y(y)$。由于约束是硬性的——线外的 $y$ 似然为零——后验就是<em>拿橙色平面去切山体</em>得到的黄色轮廓：<b>“先验沿约束线的切片”</b>。这一句是整个实验的钥匙。</p>
+  <p>仔细看这条黄色曲线：它有<em>好几个峰</em>（约束线切过螺旋的好几圈，见下方实时计数）。意思是：好几个<em>互相很不一样</em>的高清解都同样合理。这叫<em>多峰后验</em>——接下来所有麻烦的根源。</p>
+  <div class="task">👉 拖动 x，观察峰的个数如何变化：有时 1 个峰（约束线只擦过外圈），有时 3–4 个峰。</div>`,
+  cfg: { surface: true, allowC: true, post: true, legend: true, live: true, mode: 'avg', x: 0.5,
+         rows: { x: true, wall: true, post: true }, cam: [11, 9, 20], tgt: [1, 1, -1] },
+},
+{
+  title: '三种损失，三种落点',
+  html: `
+  <p>神经网络最终必须输出<em>一个</em>确定的 $\\hat y$。训练时用什么损失，就在数学上决定了它落在后验的哪个位置（这叫<em>贝叶斯最优解</em>）：</p>
+  <ul>
+    <li><b style="color:var(--c-mse)">MSE → 后验均值</b> $\\mathbb{E}[y\\mid x]$（红球）：几个峰的加权平均，恰好落进峰与峰<em>之间的空隙</em>——先验密度几乎为零的地方。翻译回图像世界：把“头发丝偏左”和“头发丝偏右”两张清晰图平均，得到一张<em>谁都不像的模糊图</em>。</li>
+    <li><b style="color:var(--c-mae)">MAE → 逐坐标中位数</b>（青绿球）：掉法不同，但同样可能落进空隙。</li>
+    <li><b style="color:var(--c-map)">MAP → 后验众数</b> $\\arg\\max_y p(y\\mid x)$（蓝球）：切片的最高点，<em>必然在山脊上</em>，必然“像一张真图”。</li>
+  </ul>
+  <div class="task">👉 看右下角表格里的 $-\\ln p_Y(\\hat y)$：MSE 落点的密度通常比 MAP 低好几个数量级。再看“像素视角”卡新出现的三张两像素图：下采样后全都精确等于 x，图却完全不同。拖几个 x 验证这不是巧合。</div>`,
+  cfg: { surface: true, allowC: true, post: true, markers: true, legend: true, live: true, stats: true, mode: 'avg', x: 0.5,
+         rows: { x: true, wall: true, post: true }, cam: [11, 8, 13], tgt: [2, 1, -2] },
+},
+{
+  title: '扫一遍 x：论文图 1b 的轨迹',
+  html: `
+  <p>单个 x 可能是巧合，把 $x$ 从 $-8$ 扫到 $8$，把三种解的落点连成轨迹（已自动播放）：</p>
+  <ul>
+    <li><b style="color:var(--c-mse)">红色轨迹（MSE）</b>大量穿行在山脊之间的<em>谷底低密度区</em>——上一步的预言系统性地成立；</li>
+    <li><b style="color:var(--c-map)">蓝色轨迹（MAP）</b>始终<em>骑在山脊上</em>走，偶尔从一条山脊跳到另一条（众数不连续，这是它的本性）。</li>
+  </ul>
+  <p>论文里 AffGAN / AffDG 训练出的网络，轨迹就贴着蓝色这条走。勾选“梯度场”可以看到 $\\nabla_y \\log p_Y(y)$ 处处指向山脊——去噪自编码器可以免费估计这个场（AffDG 的“罗盘”，也是今天扩散模型的思想雏形）。</p>
+  <div class="task">👉 让动画跑一会儿，然后勾选“梯度场 ∇log p_Y”，观察短线（暗端→亮端）永远指向最近的山脊。</div>`,
+  cfg: { surface: true, allowC: true, post: true, markers: true, traj: true, play: true, legend: true, live: true, stats: true, mode: 'avg',
+         rows: { x: true, wall: true, post: true, traj: true, grad: true }, cam: [18, 26, 26], tgt: [0, 0.5, 0] },
+},
+{
+  title: '用数字盖章：交叉熵与 Table 1',
+  html: `
+  <p>论文的核心声明是：带仿射投影的 GAN（AffGAN）实际在最小化<em>交叉熵</em> $$H[q_\\theta, p_Y] = \\mathbb{E}_{\\hat y \\sim q_\\theta}\\big[-\\log p_Y(\\hat y)\\big],$$ 从而逼近 MAP。想验证它，就必须能对任意 $\\hat y$ 求出 $p_Y(\\hat y)$ 的值。</p>
+  <p>在这个沙盘里<em>可以</em>：$p_Y$ 是我们亲手搭的 480 个高斯之和，代入公式即得——所以右边卡片里那三个数字算得出来，且 <em>MAP &lt; MAE &lt; MSE</em>，与论文 Table 1（暴力 MAP 3.15 · AffGAN 4.10 · MAE 6.30 · MSE 9.10）排序一致。这就给“AffGAN 确实在逼近 MAP”盖了章，而不只是“看起来锐利”的玄学。</p>
+  <p>而真实图像的 $p_Y$ <em>没有解析式</em>、维度以百万计，$-\\log p_Y(\\hat y)$ 一次都无法求值——<em>交叉熵在真实世界里永远算不出来</em>。这正是论文非做这个玩具实验不可的原因：它是唯一能拿“标准答案”给理论盖章的地方。</p>
+  <div class="task">👉 顺带一提：二维沙盘里 AffDG（3.81）比 AffGAN（4.10）还好，但在高维真实图像上只有 GAN 撑住了——玩具实验验证“理论对不对”，不保证“高维下谁更能打”。</div>`,
+  cfg: { surface: true, allowC: true, post: true, markers: true, traj: true, legend: true, live: true, stats: true, ce: true, mode: 'avg', x: 0.5,
+         rows: { x: true, wall: true, post: true, traj: true, grad: true }, cam: [18, 27, 25], tgt: [0, 0.5, 0] },
+},
+{
+  title: '思考题 + 自由探索',
+  html: `
+  <p>论文留下的检验题：把下采样改成 $x = y_1$（直接丢掉第二个像素），约束线会变成什么方向？MSE 的输出还会掉进空隙吗？</p>
+  <p>上方的算子菜单已解锁——切过去亲眼验证。提示：竖直的约束线（平行于 $y_2$ 轴）<em>依旧</em>切开多圈螺旋；$x=0.5$ 时 MSE 均值正好掉进螺旋圆心的死区，$-\\ln p_Y$ 高达 21 以上，交叉熵飙到 12。结论：<em>问题不在“取平均”这个具体算子，而在“一对多”本身</em>——只要观测压缩了信息、后验是多峰的，均值就必然失效。</p>
+  <p>想清楚这一步，你对“约束线切先验”的理解就稳了。所有控件已全部解锁，请自由探索。</p>
+  <div class="task">👉 一句话总结：低清 $x$ 给的不是答案，而是一条约束线；MSE 在线上选了“空隙”，MAP 选了“卷上”——而 AffGAN 学会了后者。</div>`,
+  cfg: { surface: true, allowC: true, post: true, markers: true, traj: true, legend: true, live: true, stats: true, ce: true,
+         rows: { mode: true, x: true, wall: true, post: true, traj: true, grad: true }, cam: [18, 27, 25], tgt: [0, 0.5, 0] },
+},
+];
+
+let cur = -1, camTween = null;
+const stepNo = $('step-no'), stepTitle = $('step-title'), stepBody = $('step-body');
+const btnPrev = $('btn-prev'), btnNext = $('btn-next'), dotsEl = $('dots');
+STEPS.forEach((_, i) => {
+  const d = document.createElement('span');
+  d.title = `第 ${i + 1} 步`;
+  d.addEventListener('click', () => applyStep(i));
+  dotsEl.appendChild(d);
+});
+
+function applyStep(i, snap = false) {
+  cur = i;
+  const s = STEPS[i], c = s.cfg;
+
+  // —— 文字 ——
+  stepNo.textContent = `第 ${i + 1} / ${STEPS.length} 步`;
+  stepTitle.textContent = s.title;
+  stepBody.innerHTML = s.html;
+  if (window.renderMathInElement) renderMathInElement(stepBody, {
+    delimiters: [{ left: '$$', right: '$$', display: true }, { left: '$', right: '$', display: false }],
+    throwOnError: false,
+  });
+  btnPrev.disabled = i === 0;
+  btnNext.textContent = i === STEPS.length - 1 ? '↺ 从头再看' : '下一步 →';
+  [...dotsEl.children].forEach((d, k) => d.className = k === i ? 'on' : k < i ? 'done' : '');
+
+  // —— 场景标准状态 ——
+  if (c.mode) setMode(c.mode);          // 第 9 步不强制，保留用户选择
+  gridHelper.visible = !!c.grid;
+  demoDots.visible = !!c.demoDots;
+  cloud.visible = !!c.cloud;
+  surface.visible = !!c.surface;
+  heightTarget = c.surface ? 1 : 0;
+  allowC = !!c.allowC;
+  showMarkers = !!c.markers;
+  ui.wall.checked = !!c.allowC;
+  ui.post.checked = !!c.post;
+  ui.traj.checked = !!c.traj;
+  ui.grad.checked = false;              // 梯度场每步默认关，由学生自己勾
+  trajGroup.visible = !!c.traj;
+  if (gradField) gradField.visible = false;
+  if (c.x !== undefined) ui.slider.value = c.x;
+  playing = !!c.play;
+  ui.play.textContent = playing ? '⏸ 暂停' : '▶ 扫描';
+
+  // —— 控件与卡片的渐进解锁 ——
+  const R = c.rows || {};
+  for (const k of ['mode', 'x', 'wall', 'post', 'traj', 'grad'])
+    rows[k].style.display = R[k] ? 'flex' : 'none';
+  cards.ctrl.style.display = (R.x || R.mode) ? '' : 'none';
+  cards.live.style.display = c.live ? '' : 'none';
+  cards.stats.style.display = c.stats ? '' : 'none';
+  cards.ce.style.display = c.ce ? '' : 'none';
+  cards.legend.style.display = c.legend ? '' : 'none';
+
+  applyX(parseFloat(ui.slider.value));
+
+  // —— 运镜 ——
+  const p1 = new THREE.Vector3(...c.cam), t1 = new THREE.Vector3(...c.tgt);
+  if (snap) {
+    camera.position.copy(p1);
+    controls.target.copy(t1);
+    camTween = null;
+  } else {
+    camTween = { t: 0, p0: camera.position.clone(), t0: controls.target.clone(), p1, t1 };
+  }
+}
+btnPrev.addEventListener('click', () => { if (cur > 0) applyStep(cur - 1); });
+btnNext.addEventListener('click', () => applyStep(cur === STEPS.length - 1 ? 0 : cur + 1));
+addEventListener('keydown', e => {
+  if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
+  if (e.key === 'ArrowRight') btnNext.click();
+  if (e.key === 'ArrowLeft') btnPrev.click();
+});
+
+/* ============ 6. 悬停查询（把鼠标当探针，读任意点的 p_Y） ============ */
+const tooltip = $('tooltip');
+const raycaster = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+let dragging = false;
+labelRenderer.domElement.addEventListener('pointerdown', () => { dragging = true; tooltip.style.display = 'none'; });
+addEventListener('pointerup', () => { dragging = false; });
+labelRenderer.domElement.addEventListener('pointerleave', () => { tooltip.style.display = 'none'; });
+const groundMath = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const groundPt = new THREE.Vector3();
+labelRenderer.domElement.addEventListener('pointermove', e => {
+  if (dragging) return;
+  const rect = sceneEl.getBoundingClientRect();
+  ndc.set(((e.clientX - rect.left) / rect.width) * 2 - 1,
+          -((e.clientY - rect.top) / rect.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  let px = null;
+  if (surface.visible) {
+    const hit = raycaster.intersectObject(surface)[0];
+    if (!hit) { tooltip.style.display = 'none'; }
+    else {
+      px = [hit.point.x, hit.point.z];
+      const d = rho(px[0], px[1]);
+      tooltip.innerHTML = `y₁ = <b>${px[0].toFixed(2)}</b>　y₂ = <b>${px[1].toFixed(2)}</b><br>` +
+        `p_Y = <b>${d.toExponential(2)}</b>　−ln p_Y = <b>${(-Math.log(Math.max(d, 1e-30))).toFixed(2)}</b>`;
+      tooltip.style.display = 'block';
+      tooltip.style.left = (e.clientX - rect.left + 14) + 'px';
+      tooltip.style.top = (e.clientY - rect.top + 14) + 'px';
+    }
+  } else {
+    // 地形还没升起（第 1–2 步）：改射数学地面，像素卡照常工作
+    tooltip.style.display = 'none';
+    if (raycaster.ray.intersectPlane(groundMath, groundPt) &&
+        Math.abs(groundPt.x) <= D && Math.abs(groundPt.z) <= D)
+      px = [groundPt.x, groundPt.z];
+  }
+  if (px) {
+    const xv = A[0] * px[0] + A[1] * px[1];
+    setSq('sq-h1', px[0]);
+    setSq('sq-h2', px[1]);
+    setSq('sq-hx', xv);
+    $('px-hov').innerHTML = `悬停点 y = <b>(${px[0].toFixed(2)}, ${px[1].toFixed(2)})</b>　x = Ay = <b>${xv.toFixed(2)}</b>`;
+  }
+});
+
+/* ============ 7. 尺寸与主循环 ============ */
+function resize() {
+  const w = sceneEl.clientWidth, h = sceneEl.clientHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  labelRenderer.setSize(w, h);
+}
+new ResizeObserver(resize).observe(sceneEl);
+resize();
+
+buildGradField();
+heightF = 0;
+updateHeights();
+applyStep(0, true);
+
+const smooth = t => t * t * (3 - 2 * t);
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.05);
+
+  if (Math.abs(heightF - heightTarget) > 1e-4) {   // 第 3 步：地形升起 / 回落
+    const step = dt / 1.4;
+    heightF += Math.max(-step, Math.min(step, heightTarget - heightF));
+    if (Math.abs(heightF - heightTarget) <= 1e-4) heightF = heightTarget;
+    updateHeights();
+  }
+  if (camTween) {
+    camTween.t += dt / 1.5;
+    const k = smooth(Math.min(camTween.t, 1));
+    camera.position.lerpVectors(camTween.p0, camTween.p1, k);
+    controls.target.lerpVectors(camTween.t0, camTween.t1, k);
+    if (camTween.t >= 1) camTween = null;
+  }
+  if (playing) {
+    let x = parseFloat(ui.slider.value) + playDir * 2.2 * dt;
+    if (x > XMAX) { x = XMAX; playDir = -1; }
+    if (x < XMIN) { x = XMIN; playDir = 1; }
+    ui.slider.value = x;
+    applyX(x);
+  }
+  controls.update();
+  renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
+});
+</script>
+</body>
+</html>

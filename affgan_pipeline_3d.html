@@ -1,0 +1,1223 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AffGAN 全流程 · 十步：训练它，然后用它</title>
+<link rel="stylesheet" href="katex/katex.min.css">
+<script defer src="katex/katex.min.js"></script>
+<script defer src="katex/contrib/auto-render.min.js"></script>
+<style>
+  :root{
+    --surface-1:#1a1a19; --page:#0d0d0d;
+    --ink-1:#ffffff; --ink-2:#c3c2b7; --ink-3:#898781;
+    --hairline:#2c2c2a; --border:rgba(255,255,255,.10);
+    --c-gen:#3987e5;   /* 蓝 · 生成器输出 / MAP */
+    --c-mean:#e66767;  /* 红 · MSE 均值 */
+    --c-real:#199e70;  /* 青绿 · 真实 HR 样本 */
+    --c-base:#c98500;  /* 黄 · A⁺x 基线 */
+    --c-line:#d95926;  /* 橙 · 约束 Ay=x */
+    --c-prsr:#d55181;  /* 洋红 · PRSR 后验采样 */
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{background:var(--page);color:var(--ink-1);
+       font:14px/1.7 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;}
+  #app{display:flex;height:100%}
+  #scene{position:relative;flex:1;min-width:0;background:var(--surface-1)}
+  #scene canvas{display:block}
+  #labels{position:absolute;inset:0;overflow:hidden}
+  #tooltip{position:absolute;display:none;pointer-events:none;z-index:20;
+    background:rgba(13,13,13,.88);border:1px solid var(--border);border-radius:8px;
+    padding:6px 10px;font-size:12px;color:var(--ink-2);white-space:nowrap;
+    font-variant-numeric:tabular-nums}
+  #tooltip b{color:var(--ink-1)}
+  .mlabel{pointer-events:none;font-weight:600;font-size:12px;color:var(--ink-1);
+    background:rgba(13,13,13,.78);border:1px solid var(--border);
+    padding:2px 8px;border-radius:10px;white-space:nowrap}
+  .mlabel i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px}
+  .axlabel{pointer-events:none;color:var(--ink-3);font-size:12.5px;font-style:italic;white-space:nowrap}
+
+  #panel{width:420px;flex:none;overflow-y:auto;padding:18px 18px 40px;
+    background:var(--page);border-left:1px solid var(--hairline)}
+  #panel h1{font-size:17px;margin:0 0 2px}
+  #panel .sub{color:var(--ink-3);font-size:12px;margin:0 0 14px}
+  .card{background:var(--surface-1);border:1px solid var(--hairline);
+    border-radius:10px;padding:12px 14px;margin-bottom:12px}
+  .card h2{font-size:13px;margin:0 0 8px;color:var(--ink-2);font-weight:600}
+  #tour{border-color:#3a3a37}
+  #step-head{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
+  #step-no{font-size:12px;color:var(--c-base);font-weight:700;white-space:nowrap}
+  #step-title{font-size:15px;font-weight:700;color:var(--ink-1)}
+  #step-body{font-size:13px;color:var(--ink-2);margin-top:6px}
+  #step-body p{margin:7px 0}
+  #step-body em{color:var(--ink-1);font-style:normal;font-weight:600}
+  #step-body ul,#step-body ol{margin:6px 0;padding-left:18px}
+  #step-body li{margin:4px 0}
+  #step-body .katex{font-size:1.02em}
+  #step-body .katex-display{margin:8px 0;overflow-x:auto;overflow-y:hidden}
+  .task{margin-top:9px;padding:7px 10px;border-radius:8px;font-size:12.5px;
+    background:rgba(217,89,38,.10);border:1px solid rgba(217,89,38,.35);color:var(--ink-1)}
+  #step-nav{display:flex;align-items:center;gap:10px;margin-top:12px}
+  #step-nav button{flex:none}
+  #dots{display:flex;gap:6px;flex:1;justify-content:center}
+  #dots span{width:8px;height:8px;border-radius:50%;background:#3a3a37;cursor:pointer}
+  #dots span.on{background:var(--c-base)}
+  #dots span.done{background:#6b6a64}
+  .hint{font-size:11.5px;color:var(--ink-3);margin-top:8px;text-align:center}
+  label.row{display:flex;align-items:center;gap:8px;margin:6px 0;color:var(--ink-2)}
+  .lb{white-space:nowrap;flex:none}
+  button{font:inherit;color:var(--ink-1);background:#242423;
+    border:1px solid var(--hairline);border-radius:7px;padding:4px 8px;
+    cursor:pointer;white-space:nowrap}
+  button:hover{background:#2e2e2c}
+  button:disabled{opacity:.4;cursor:default}
+  input[type=range]{flex:1;accent-color:var(--c-line)}
+  input[type=checkbox]{accent-color:var(--c-gen)}
+  #xval{font-variant-numeric:tabular-nums;color:var(--ink-1);font-weight:600;min-width:52px}
+  .stat{font-size:13px;color:var(--ink-2);font-variant-numeric:tabular-nums;margin:4px 0}
+  .stat b{color:var(--ink-1)}
+  .ok{color:#0ca30c;font-weight:700}
+  .note{font-size:12px;color:var(--ink-3);margin-top:8px}
+  .beatrow{font-size:12.5px;color:var(--ink-2);margin:5px 0;opacity:.35;transition:opacity .3s}
+  .beatrow.on{opacity:1}
+  .beatrow b{color:var(--ink-1)}
+  .imgrow{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0}
+  .imgcell{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;
+    color:var(--ink-3);transition:opacity .3s;max-width:92px;text-align:center}
+  .imgcell canvas{width:88px;height:88px;image-rendering:pixelated;
+    border:1px solid var(--border);border-radius:6px;background:#000}
+  .imgcell.dim{opacity:.25}
+  .legend{list-style:none;margin:0;padding:0;font-size:12.5px;color:var(--ink-2)}
+  .legend li{margin:4px 0}
+  .sw{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:7px;vertical-align:-2px}
+  @media (max-width:900px){ #app{flex-direction:column} #panel{width:100%;border-left:0;border-top:1px solid var(--hairline)} #scene{min-height:55vh} }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://fastly.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+    "three/addons/": "https://fastly.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="app">
+  <div id="scene"><div id="tooltip"></div></div>
+
+  <div id="panel">
+    <h1>AffGAN 全流程：训练它，然后用它</h1>
+    <p class="sub">四步主线 → 准备 → 训练 → 推理 → PRSR 对比，一条流水线走到底——训练过程现场直播，真实人脸同步演算</p>
+
+    <div class="card" id="tour">
+      <div id="step-head"><span id="step-no"></span><span id="step-title"></span></div>
+      <div id="step-body"></div>
+      <div id="step-nav">
+        <button id="btn-prev">← 上一步</button>
+        <div id="dots"></div>
+        <button id="btn-next">下一步 →</button>
+      </div>
+      <div class="hint">键盘 ←/→ 也可翻页 · 拖拽旋转视角，滚轮缩放</div>
+    </div>
+
+    <div class="card" id="card-ctrl">
+      <h2>控制</h2>
+      <label class="row" id="row-x"><span class="lb">观测 x：</span>
+        <input type="range" id="xslider" min="-8" max="8" step="0.02" value="0.5">
+        <span id="xval">0.50</span>
+        <button id="play" title="让 x 自动来回扫描">▶ 扫描</button>
+      </label>
+      <label class="row" id="row-wall"><input type="checkbox" id="ck-wall" checked> 约束平面（Ay = x 的全部合法解）</label>
+      <label class="row" id="row-post"><input type="checkbox" id="ck-post" checked> 后验切片曲线</label>
+      <label class="row" id="row-grad"><input type="checkbox" id="ck-grad" checked> 梯度场 ∇log p_Y（AffDG 的“罗盘”）</label>
+    </div>
+
+    <div class="card" id="card-img">
+      <h2 id="img-title">真实图像现场演算</h2>
+      <div class="imgrow" id="img-row">
+        <div class="imgcell" id="ic-y"><canvas id="cv-y" width="96" height="96"></canvas><span>高清 y</span></div>
+        <div class="imgcell" id="ic-x"><canvas id="cv-x" width="24" height="24"></canvas><span>低清 x=Ay</span></div>
+        <div class="imgcell" id="ic-b"><canvas id="cv-b" width="96" height="96"></canvas><span>基线 A⁺x</span></div>
+        <div class="imgcell" id="ic-r"><canvas id="cv-r" width="96" height="96"></canvas><span>残差</span></div>
+        <div class="imgcell" id="ic-o"><canvas id="cv-o" width="96" height="96"></canvas><span>输出 ŷ</span></div>
+        <div class="imgcell" id="ic-g"><canvas id="cv-g" width="96" height="96"></canvas><span>乱猜</span></div>
+      </div>
+      <div class="stat" id="img-err"></div>
+      <img id="img-paper" alt="论文实测图" style="width:100%;border-radius:8px;display:none">
+      <p class="note" id="img-note"></p>
+    </div>
+
+    <div class="card" id="card-b">
+      <h2>现场求伪逆：SGD 训练 B ≈ A⁺</h2>
+      <div class="stat"><button id="btn-b0">从零初始化训练</button> <button id="btn-brand">随机初始化训练</button></div>
+      <div class="stat">B = (<b id="b1">0.000</b>, <b id="b2">0.000</b>)　AB = <b id="bab">0.000</b>（目标 1）</div>
+      <div class="stat">损失 ≈ <b id="bloss">–</b>　迭代 <b id="biter">0</b></div>
+      <p class="note">从零初始化的梯度下降有“隐式偏好”：停在最小范数右逆 (1,1) = 真伪逆。随机初始化则常停在别的右逆——b₁+b₂=2 的整条线都能把损失压到 0，Bx 依旧合法，但不再是“最保守”的基线。这正是论文强调“必须初始化成正确伪逆、训练中冻结”的原因。</p>
+    </div>
+
+    <div class="card" id="card-train">
+      <h2>训练监视器（沙盘引擎：沿 ∇log p<sub>σ</sub> 爬山）</h2>
+      <div class="stat" id="train-btns"><button id="btn-train">▶ 训练</button> <button id="btn-treset">↺ 重置网络</button></div>
+      <div class="stat">迭代 <b id="tr-iter">0</b>　instance noise σ = <b id="tr-sig">2.40</b>（线性退火）</div>
+      <div class="stat">交叉熵 H[q_θ, p_Y] = <b id="tr-ce">–</b> nats　｜　纯基线 A⁺x 参考 <b id="tr-base">–</b>　暴力 MAP ≈ 4.7</div>
+      <p class="note">蓝曲线 = 生成器 g_θ 的输出轨迹；黄曲线 = 出厂状态 A⁺x。青绿点云 = 不配对的真 HR 样本，蓝点云 = 生成样本——两团点云的抖动幅度就是 instance noise，看它如何退火归零。</p>
+    </div>
+
+    <div class="card" id="card-infer">
+      <h2>推理四拍 · 一次前向出图</h2>
+      <div class="beatrow" id="bt1">① 一张新低清图 <b>x</b> 进来（拖滑块换一张）</div>
+      <div class="beatrow" id="bt2">② <b>A⁺x</b> 基线放大：低频正确、细节模糊（黄球）</div>
+      <div class="beatrow" id="bt3">③ <b>f_θ(x)</b> 前向一次（白球）→ <b>(I−A⁺A)</b> 高通只留细节（紫箭头）</div>
+      <div class="beatrow" id="bt4">④ 相加输出 <b>ŷ</b>（蓝球）｜一致性 |Aŷ−x| = <b id="inf-err">–</b></div>
+      <div class="stat" style="margin-top:8px"><button id="btn-replay">↺ 重播四拍</button></div>
+      <p class="note">零优化迭代、零采样：一次前向就是近似 MAP 解——“摊销”在这里兑现。白球是网络<b>真实的前向输出</b>：它偏离约束线的对角分量来自随机初始化、训练从未改变过它（梯度穿过投影层被高通滤波，传不到这个方向）；投影一步把它精确扔掉。</p>
+    </div>
+
+    <div class="card" id="card-prsr">
+      <h2>PRSR 对比：采样 vs 众数</h2>
+      <div class="stat">已从后验采样 <b id="prsr-n">0</b> 张（洋红点，落满每一个峰）</div>
+      <p class="note">PRSR 逐像素自回归地从后验采样：慢，但多样；AffGAN 一步输出众数（蓝球）：快，但唯一。同一个贝叶斯问题的两种取舍。</p>
+    </div>
+
+    <div class="card" id="card-legend">
+      <h2>图例</h2>
+      <ul class="legend">
+        <li><span class="sw" style="background:linear-gradient(90deg,#0d366b,#3987e5,#b7d3f6)"></span>地形 = 先验密度 p_Y　<span class="sw" style="background:var(--c-line)"></span>橙 = 约束 Ay=x</li>
+        <li><span class="sw" style="background:var(--c-base)"></span>黄曲线 = 出厂基线 A⁺x　<span class="sw" style="background:var(--c-gen)"></span>蓝曲线 = 生成器 g_θ 的输出</li>
+        <li><span class="sw" style="background:var(--c-real)"></span>青绿点云 = 真 HR 样本　<span class="sw" style="background:var(--c-gen)"></span>蓝点云 = 生成样本</li>
+        <li><span class="sw" style="background:var(--c-gen)"></span>蓝球 = MAP/ŷ　<span class="sw" style="background:var(--c-mean)"></span>红球 = MSE 均值　<span class="sw" style="background:var(--c-prsr)"></span>洋红点 = PRSR 采样</li>
+        <li><span class="sw" style="background:#c3c2b7"></span>灰白短线 = ∇log p_Y（AffDG 的罗盘）</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+/* ============ 1. 瑞士卷先验（与前两页相同的数学） ============ */
+const T0 = 1.5 * Math.PI, T1 = 4.5 * Math.PI;
+const SCALE = 0.85, SIGMA = 0.7, NK = 480;
+const D = 13.5, B = 13.2, GN = 221, STEP = 2 * D / (GN - 1);
+const HMAX = 3.4, XMIN = -8, XMAX = 8;
+const INV2S2 = 1 / (2 * SIGMA * SIGMA);
+const KNORM = 1 / (NK * 2 * Math.PI * SIGMA * SIGMA);
+const kernels = [];
+for (let i = 0; i < NK; i++) {
+  const t = T0 + (T1 - T0) * (i + 0.5) / NK;
+  kernels.push({ x: SCALE * t * Math.cos(t), z: SCALE * t * Math.sin(t) });
+}
+const grid = new Float32Array(GN * GN);
+{
+  const R = Math.ceil(5 * SIGMA / STEP);
+  for (const k of kernels) {
+    const ci = Math.round((k.x + D) / STEP), cj = Math.round((k.z + D) / STEP);
+    for (let j = Math.max(0, cj - R); j <= Math.min(GN - 1, cj + R); j++) {
+      const gz = -D + j * STEP, dz = gz - k.z;
+      for (let i = Math.max(0, ci - R); i <= Math.min(GN - 1, ci + R); i++) {
+        const gx = -D + i * STEP, dx = gx - k.x;
+        grid[j * GN + i] += Math.exp(-(dx * dx + dz * dz) * INV2S2);
+      }
+    }
+  }
+  for (let i = 0; i < grid.length; i++) grid[i] *= KNORM;
+}
+let rhoMax = 0;
+for (let i = 0; i < grid.length; i++) if (grid[i] > rhoMax) rhoMax = grid[i];
+const HS = HMAX / rhoMax;
+function rho(x, z) {
+  let fx = (x + D) / STEP, fz = (z + D) / STEP;
+  fx = Math.min(Math.max(fx, 0), GN - 1.001);
+  fz = Math.min(Math.max(fz, 0), GN - 1.001);
+  const i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j;
+  return (grid[j * GN + i] * (1 - u) + grid[j * GN + i + 1] * u) * (1 - v)
+       + (grid[(j + 1) * GN + i] * (1 - u) + grid[(j + 1) * GN + i + 1] * u) * v;
+}
+function rhoExact(x, z) {
+  let s = 0;
+  for (const k of kernels) {
+    const dx = x - k.x, dz = z - k.z, d2 = dx * dx + dz * dz;
+    if (d2 < 25) s += Math.exp(-d2 * INV2S2);
+  }
+  return s * KNORM;
+}
+const nll = p => -Math.log(Math.max(rhoExact(p[0], p[1]), 1e-30));
+const A = [0.5, 0.5];
+function pX(x0) {
+  const varx = SIGMA * SIGMA * 0.5;
+  const norm = 1 / (NK * Math.sqrt(2 * Math.PI * varx));
+  let s = 0;
+  for (const k of kernels) {
+    const d = x0 - (k.x + k.z) / 2;
+    s += Math.exp(-d * d / (2 * varx));
+  }
+  return s * norm;
+}
+function lineFor(x0) {
+  const il = 1 / Math.SQRT2, dx = -il, dz = il;
+  let t0 = -Infinity, t1 = Infinity;
+  for (const [p, d] of [[x0, dx], [x0, dz]]) {
+    let ta = (-B - p) / d, tb = (B - p) / d;
+    if (ta > tb) [ta, tb] = [tb, ta];
+    t0 = Math.max(t0, ta); t1 = Math.min(t1, tb);
+  }
+  return t1 > t0 ? { px: x0, pz: x0, dx, dz, t0, t1 } : null;
+}
+function solve(x0, M = 600) {
+  const L = lineFor(x0);
+  if (!L) return null;
+  const pts = new Float64Array(2 * M), w = new Float64Array(M);
+  let sum = 0, best = 0, bi = 0;
+  for (let m = 0; m < M; m++) {
+    const t = L.t0 + (L.t1 - L.t0) * m / (M - 1);
+    const x = L.px + t * L.dx, z = L.pz + t * L.dz;
+    pts[2 * m] = x; pts[2 * m + 1] = z;
+    w[m] = rho(x, z); sum += w[m];
+    if (w[m] > best) { best = w[m]; bi = m; }
+  }
+  let mx = 0, mz = 0;
+  for (let m = 0; m < M; m++) { mx += w[m] * pts[2 * m]; mz += w[m] * pts[2 * m + 1]; }
+  mx /= sum; mz /= sum;
+  return { L, pts, w, sum, map: [pts[2 * bi], pts[2 * bi + 1]], mean: [mx, mz] };
+}
+function gaussRnd() {
+  let u = 0, v = 0;
+  while (!u) u = Math.random();
+  while (!v) v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+function sampleY() {
+  const k = kernels[Math.floor(Math.random() * NK)];
+  return [k.x + gaussRnd() * SIGMA, k.z + gaussRnd() * SIGMA];
+}
+
+/* ============ 2. 生成器沙盘模型：t(x) 结点 + 退火 mean-shift 训练 ============ */
+// g_θ(x) = (x+t, x−t)：零空间偏移 t 就是网络仅剩的自由度
+const KN = 81;
+const knotX = new Float64Array(KN);
+for (let i = 0; i < KN; i++) knotX[i] = XMIN + (XMAX - XMIN) * i / (KN - 1);
+// 诚实的网络参数化：f_θ(x) = (x + r + t,  x + r − t) —— 先有 f（白球），投影后才有 ŷ（蓝球）
+//   r(x) = 行空间误差：随机初始化；梯度穿过投影层被高通滤波（论文式 25），训练永远碰不到它
+//   t(x) = 零空间细节：训练唯一能更新的部分
+let tk = new Float64Array(KN);
+const rk = new Float64Array(KN);
+function initNet() {                      // “随机初始化的 CNN”：平滑的随机函数
+  for (let i = 0; i < KN; i++) {
+    const x = knotX[i];
+    rk[i] = 3.0 * Math.sin(0.60 * x + 1.4) + 0.8 * Math.sin(0.31 * x + 4.2);
+    tk[i] = 0.5 * Math.sin(1.10 * x + 0.6) + 0.4 * Math.sin(0.47 * x + 2.9);
+  }
+}
+initNet();
+function interpK(arr, x) {
+  const f = Math.min(Math.max((x - XMIN) / (XMAX - XMIN), 0), 1) * (KN - 1);
+  const i = Math.min(Math.floor(f), KN - 2), u = f - i;
+  return arr[i] * (1 - u) + arr[i + 1] * u;
+}
+const tOf = x => interpK(tk, x);
+const fRawOf = x => {                     // 网络真实的前向输出（原始、一般不合法）
+  const r = interpK(rk, x), t = interpK(tk, x);
+  return [x + r + t, x + r - t];
+};
+const project = (f, x) => {               // 仿射投影层：ŷ = A⁺x + (I−A⁺A)f
+  const d = (f[0] - f[1]) / 2;
+  return [x + d, x - d];
+};
+const yHat = x => project(fRawOf(x), x);  // ŷ 永远由 f 投影而来，因果与论文一致
+
+let iter = 0, training = false;
+const SIG0 = 2.4, ANNEAL = 12000;
+const sigNow = () => SIG0 * Math.max(0, 1 - iter / ANNEAL);
+function scoreStep(K) {          // 对随机结点做一次“沿平滑密度的 mean-shift”爬山
+  const s = sigNow(), s2 = SIGMA * SIGMA + s * s, inv = 1 / (2 * s2);
+  for (let k = 0; k < K; k++) {
+    const i = Math.floor(Math.random() * KN);
+    const x = knotX[i], t = tk[i];
+    const y1 = x + t, y2 = x - t;
+    let wsum = 0, nx = 0, nz = 0;
+    for (const kr of kernels) {
+      const dx = kr.x - y1, dz = kr.z - y2, d2 = dx * dx + dz * dz;
+      if (d2 > 50 * s2) continue;
+      const e = Math.exp(-d2 * inv);
+      wsum += e; nx += e * dx; nz += e * dz;
+    }
+    if (wsum < 1e-30) continue;
+    tk[i] += 0.6 * ((nx - nz) / wsum) / 2;      // mean-shift 在零空间方向的分量
+    const lim = 13 - Math.abs(x);
+    tk[i] = Math.max(-lim, Math.min(lim, tk[i]));
+  }
+  iter += K;
+  for (let i = 1; i < KN - 1; i++)              // 轻微扩散 ≈ 网络的平滑归纳偏置
+    tk[i] = 0.96 * tk[i] + 0.02 * (tk[i - 1] + tk[i + 1]);
+}
+function ceOfGen() {
+  let h = 0, W = 0;
+  for (let i = 0; i < KN; i++) {
+    const w = pX(knotX[i]);
+    h += w * nll(yHat(knotX[i]));
+    W += w;
+  }
+  return h / W;
+}
+
+/* ============ 3. 场景基础 ============ */
+const COL = { gen: 0x3987e5, mean: 0xe66767, real: 0x199e70, base: 0xc98500, line: 0xd95926, prsr: 0xd55181, surface: 0x1a1a19 };
+const sceneEl = document.getElementById('scene');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(COL.surface);
+scene.fog = new THREE.Fog(COL.surface, 55, 110);
+const camera = new THREE.PerspectiveCamera(45, 2, 0.1, 300);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+sceneEl.appendChild(renderer.domElement);
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.domElement.id = 'labels';
+sceneEl.appendChild(labelRenderer.domElement);
+const controls = new OrbitControls(camera, labelRenderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.maxPolarAngle = Math.PI / 2 + 0.05;
+controls.minDistance = 6;
+controls.maxDistance = 90;
+scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+sun.position.set(18, 30, 10);
+scene.add(sun);
+const gridHelper = new THREE.GridHelper(2 * D, 18, 0x383835, 0x232322);
+gridHelper.position.y = -0.01;
+scene.add(gridHelper);
+function makeLabel(cls, html, x, y, z, parent = scene) {
+  const div = document.createElement('div');
+  div.className = cls;
+  div.innerHTML = html;
+  const o = new CSS2DObject(div);
+  o.position.set(x, y, z);
+  parent.add(o);
+  return div;
+}
+makeLabel('axlabel', 'y₁', D + 1.5, 0, 0);
+makeLabel('axlabel', 'y₂', 0, 0, D + 1.5);
+
+// —— 地形 ——
+const STOPS = [
+  [0.00, '#1e2126'], [0.10, '#0d366b'], [0.28, '#184f95'], [0.48, '#256abf'],
+  [0.66, '#3987e5'], [0.84, '#6da7ec'], [1.00, '#b7d3f6'],
+].map(([v, h]) => [v, new THREE.Color(h)]);
+function colormap(v, out) {
+  for (let i = 1; i < STOPS.length; i++) {
+    if (v <= STOPS[i][0]) {
+      const [v0, c0] = STOPS[i - 1], [v1, c1] = STOPS[i];
+      return out.copy(c0).lerp(c1, (v - v0) / (v1 - v0));
+    }
+  }
+  return out.copy(STOPS[STOPS.length - 1][1]);
+}
+let surface, baseH;
+{
+  const geo = new THREE.PlaneGeometry(2 * D, 2 * D, GN - 1, GN - 1);
+  geo.rotateX(-Math.PI / 2);
+  const pos = geo.attributes.position;
+  baseH = new Float32Array(pos.count);
+  const colors = new Float32Array(pos.count * 3);
+  const c = new THREE.Color();
+  for (let k = 0; k < pos.count; k++) {
+    const x = pos.getX(k), z = pos.getZ(k);
+    const r = rho(x, z);
+    baseH[k] = HS * r;
+    colormap(Math.pow(r / rhoMax, 0.6), c);
+    colors[3 * k] = c.r; colors[3 * k + 1] = c.g; colors[3 * k + 2] = c.b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  surface = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0 }));
+  scene.add(surface);
+}
+let heightF = 0, heightTarget = 0;
+function updateHeights() {
+  const pos = surface.geometry.attributes.position;
+  for (let k = 0; k < pos.count; k++) pos.setY(k, heightF * baseH[k]);
+  pos.needsUpdate = true;
+  surface.geometry.computeVertexNormals();
+}
+const hAt = (x, z) => heightF * HS * rho(x, z);
+
+// —— 约束平面 / 虚线 / 后验切片 ——
+const WALLH = 4.4;
+const wall = new THREE.Mesh(new THREE.PlaneGeometry(1, 1),
+  new THREE.MeshBasicMaterial({ color: COL.line, transparent: true, opacity: 0.13, side: THREE.DoubleSide, depthWrite: false }));
+wall.renderOrder = 2;
+scene.add(wall);
+const baseLine = new THREE.Line(new THREE.BufferGeometry(),
+  new THREE.LineDashedMaterial({ color: COL.line, dashSize: 0.5, gapSize: 0.32 }));
+scene.add(baseLine);
+const postMat = new THREE.MeshBasicMaterial({ color: COL.base });
+let postTube = null;
+function rebuildPostTube(st) {
+  if (postTube) { postTube.geometry.dispose(); scene.remove(postTube); postTube = null; }
+  if (!st) return;
+  const v3 = [];
+  for (let m = 0; m < st.w.length; m += 4) {
+    const x = st.pts[2 * m], z = st.pts[2 * m + 1];
+    v3.push(new THREE.Vector3(x, hAt(x, z) + 0.1, z));
+  }
+  postTube = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(v3), 360, 0.09, 8), postMat);
+  scene.add(postTube);
+}
+
+// —— 标记球 ——
+function makeMarker(colorHex, text, below = false) {
+  const g = new THREE.Group();
+  const sph = new THREE.Mesh(new THREE.SphereGeometry(0.28, 24, 16), new THREE.MeshBasicMaterial({ color: colorHex }));
+  const halo = new THREE.Mesh(new THREE.SphereGeometry(0.28, 24, 16), new THREE.MeshBasicMaterial({ color: COL.surface, side: THREE.BackSide }));
+  halo.scale.setScalar(1.3);
+  const div = document.createElement('div');
+  div.className = 'mlabel';
+  div.innerHTML = `<i style="background:#${colorHex.toString(16).padStart(6, '0')}"></i>${text}`;
+  const lab = new CSS2DObject(div);
+  lab.position.set(0, below ? -0.55 : 0.75, 0);
+  lab.center.set(0.5, below ? 0 : 1);
+  g.add(sph, halo, lab);
+  g.visible = false;
+  scene.add(g);
+  return { g, div };
+}
+const mkGood = makeMarker(COL.gen, '合法·在山脊：|Aŷ−x|=0，p_Y 高');
+const mkUgly = makeMarker(0xe1e0d9, '同样合法·在谷底：|Aŷ−x|=0，p_Y≈0', true);
+const mkMode = makeMarker(COL.gen, 'MAP 众数');
+const mkMean = makeMarker(COL.mean, 'MSE 均值', true);
+const mkBase = makeMarker(COL.base, 'A⁺x 基线（第②拍）');
+const mkF = makeMarker(0xe1e0d9, 'f_θ(x) 原始输出（第③拍）');
+const mkOut = makeMarker(COL.gen, 'ŷ 最终输出（第④拍）', true);
+const residArrow = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(), 1, 0x9085e9, 0.6, 0.35);
+residArrow.visible = false;
+scene.add(residArrow);
+// 白球 → 蓝球的正交投影虚线（第④拍）
+const projLine = new THREE.Line(new THREE.BufferGeometry(),
+  new THREE.LineDashedMaterial({ color: 0xc3c2b7, dashSize: 0.3, gapSize: 0.2, transparent: true, opacity: 0.85 }));
+projLine.visible = false;
+scene.add(projLine);
+function placeMk(mk, p, lift = 0.34) { mk.g.visible = true; mk.g.position.set(p[0], hAt(p[0], p[1]) + lift, p[1]); }
+
+// —— 梯度场（AffDG 的罗盘） ——
+let gradField = null;
+function buildGradField() {
+  const P = [], C = [];
+  const tail = new THREE.Color('#52514e'), head = new THREE.Color('#e1e0d9');
+  const NG = 27, LEN = 0.32, h = 0.18;
+  for (let j = 0; j < NG; j++) for (let i = 0; i < NG; i++) {
+    const x = -12.4 + 24.8 * i / (NG - 1), z = -12.4 + 24.8 * j / (NG - 1);
+    const r = rho(x, z);
+    if (r < rhoMax * 1e-6) continue;
+    const gx = rho(x + h, z) - rho(x - h, z), gz = rho(x, z + h) - rho(x, z - h);
+    const gl = Math.hypot(gx, gz);
+    if (gl < 1e-14) continue;
+    const dx = gx / gl, dz = gz / gl;
+    const x0 = x - dx * LEN, z0 = z - dz * LEN, x1 = x + dx * LEN, z1 = z + dz * LEN;
+    P.push(x0, HS * rho(x0, z0) + 0.07, z0, x1, HS * rho(x1, z1) + 0.07, z1);
+    C.push(tail.r, tail.g, tail.b, head.r, head.g, head.b);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(C, 3));
+  gradField = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors: true }));
+  gradField.visible = false;
+  scene.add(gradField);
+}
+
+// —— 两条输出曲线（黄基线 / 蓝生成器）与两团点云 ——
+const baseTubeMat = new THREE.MeshBasicMaterial({ color: COL.base });
+const genTubeMat = new THREE.MeshBasicMaterial({ color: COL.gen });
+let baseTube = null, genTube = null;
+function buildCurve(fn, mat, old) {
+  if (old) { old.geometry.dispose(); scene.remove(old); }
+  const v3 = [];
+  for (let i = 0; i < KN; i++) {
+    const [a, b] = fn(knotX[i]);
+    v3.push(new THREE.Vector3(a, hAt(a, b) + 0.08, b));
+  }
+  const tube = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(v3), 300, 0.07, 8), mat);
+  scene.add(tube);
+  return tube;
+}
+const NCLOUD = 220;
+const realBase = [], genXs = [];
+for (let i = 0; i < NCLOUD; i++) {
+  realBase.push(sampleY());
+  const y = sampleY();
+  genXs.push((y[0] + y[1]) / 2);
+}
+function mkCloud(color) {
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(NCLOUD * 3), 3));
+  const pts = new THREE.Points(geo, new THREE.PointsMaterial({ color, size: 0.2, transparent: true, opacity: 0.9, depthWrite: false }));
+  pts.visible = false;
+  scene.add(pts);
+  return pts;
+}
+const realCloud = mkCloud(COL.real);
+const genCloud = mkCloud(COL.gen);
+function jitterClouds() {          // instance noise：真假两边同幅度加噪
+  const s = sigNow();
+  const rp = realCloud.geometry.attributes.position;
+  const gp = genCloud.geometry.attributes.position;
+  for (let i = 0; i < NCLOUD; i++) {
+    const r = realBase[i];
+    rp.setXYZ(i, r[0] + s * gaussRnd(), hAt(r[0], r[1]) + 0.1, r[1] + s * gaussRnd());
+    const g = yHat(genXs[i]);
+    gp.setXYZ(i, g[0] + s * gaussRnd(), hAt(g[0], g[1]) + 0.1, g[1] + s * gaussRnd());
+  }
+  rp.needsUpdate = true;
+  gp.needsUpdate = true;
+}
+
+// —— B ≈ A⁺ 的 SGD 小演示（平地世界） ——
+let b1 = 0, b2 = 0, bIter = 0, bRunning = false, bLoss = NaN;
+const diagTarget = new THREE.Line(new THREE.BufferGeometry().setFromPoints(
+  [new THREE.Vector3(-10, 0.04, -10), new THREE.Vector3(10, 0.04, 10)]),
+  new THREE.LineDashedMaterial({ color: COL.real, dashSize: 0.5, gapSize: 0.3, transparent: true, opacity: 0.7 }));
+diagTarget.computeLineDistances();
+scene.add(diagTarget);
+makeLabel('axlabel', '目标：最小范数右逆 = 对角线', 10.8, 0, 10.8, diagTarget);
+const bLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(
+  [new THREE.Vector3(), new THREE.Vector3(1, 0.05, 1)]),
+  new THREE.LineBasicMaterial({ color: COL.real }));
+scene.add(bLine);
+const bMk = makeMarker(COL.real, 'Bx（B 的上采样结果）');
+function bStep(K) {
+  for (let k = 0; k < K; k++) {
+    const y = sampleY();
+    const s = (y[0] + y[1]) / 2;
+    const x = (sampleY()[0] + sampleY()[1]) / 2;
+    const AB = (b1 + b2) / 2, e = 1 - AB, nb2 = b1 * b1 + b2 * b2;
+    const g1 = -s * s * e;                                   // ∂L1/∂bᵢ
+    const d1 = x * x * (-e * nb2 + e * e * 2 * b1);          // ∂L2/∂b₁
+    const d2 = x * x * (-e * nb2 + e * e * 2 * b2);          // ∂L2/∂b₂
+    b1 -= 0.004 * (g1 + d1);
+    b2 -= 0.004 * (g1 + d2);
+    const L = s * s * e * e + x * x * e * e * nb2;
+    bLoss = isNaN(bLoss) ? L : 0.98 * bLoss + 0.02 * L;
+  }
+  bIter += K;
+}
+function updateBDemo(xObs) {
+  $('b1').textContent = b1.toFixed(3);
+  $('b2').textContent = b2.toFixed(3);
+  $('bab').textContent = ((b1 + b2) / 2).toFixed(3);
+  $('bloss').textContent = isNaN(bLoss) ? '–' : bLoss.toExponential(1);
+  $('biter').textContent = bIter;
+  const nb = Math.hypot(b1, b2);
+  bLine.visible = F.bDemo && nb > 0.05;
+  if (nb > 0.05) {
+    const s = 12 / nb;
+    bLine.geometry.dispose();
+    bLine.geometry = new THREE.BufferGeometry().setFromPoints(
+      [new THREE.Vector3(-b1 * s, 0.05, -b2 * s), new THREE.Vector3(b1 * s, 0.05, b2 * s)]);
+  }
+  if (F.bDemo) placeMk(bMk, [b1 * xObs, b2 * xObs]);
+  else bMk.g.visible = false;
+}
+
+// —— PRSR 采样点 ——
+const PRSRCAP = 90;
+const prsrPts = (() => {
+  const geo = new THREE.BufferGeometry();
+  const arr = new Float32Array(PRSRCAP * 3);
+  for (let i = 0; i < PRSRCAP; i++) arr[3 * i + 1] = -999;
+  geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+  const p = new THREE.Points(geo, new THREE.PointsMaterial({ color: COL.prsr, size: 0.26, transparent: true, opacity: 0.95, depthWrite: false }));
+  p.visible = false;
+  scene.add(p);
+  return p;
+})();
+let prsrN = 0, prsrClock = 0, prsrSt = null;
+function prsrReset(st) {
+  prsrSt = st;
+  prsrN = 0;
+  const p = prsrPts.geometry.attributes.position;
+  for (let i = 0; i < PRSRCAP; i++) p.setY(i, -999);
+  p.needsUpdate = true;
+  $('prsr-n').textContent = 0;
+}
+function prsrSpawn() {
+  if (!prsrSt) return;
+  const r = Math.random() * prsrSt.sum;
+  let acc = 0, m = 0;
+  for (; m < prsrSt.w.length; m++) { acc += prsrSt.w[m]; if (acc >= r) break; }
+  m = Math.min(m, prsrSt.w.length - 1);
+  const x = prsrSt.pts[2 * m], z = prsrSt.pts[2 * m + 1];
+  const i = prsrN % PRSRCAP;
+  prsrPts.geometry.attributes.position.setXYZ(i, x, hAt(x, z) + 0.16 + Math.random() * 0.15, z);
+  prsrPts.geometry.attributes.position.needsUpdate = true;
+  prsrN++;
+  $('prsr-n').textContent = prsrN;
+}
+
+/* ============ 4. UI 与状态 ============ */
+const $ = id => document.getElementById(id);
+const ui = { slider: $('xslider'), xval: $('xval'), play: $('play'), wall: $('ck-wall'), post: $('ck-post'), grad: $('ck-grad') };
+const rows = { x: $('row-x'), wall: $('row-wall'), post: $('row-post'), grad: $('row-grad') };
+const cards = { ctrl: $('card-ctrl'), img: $('card-img'), b: $('card-b'), train: $('card-train'), infer: $('card-infer'), prsr: $('card-prsr'), legend: $('card-legend') };
+let F = {};
+let beat = 0, beatT = 0;
+
+/* ——— 真实图像现场演算：同一套数学作用在一张 CelebA 人脸上 ———
+   演示算子 A = 4×4 块平均、步长 4（其精确伪逆 A⁺ = 块内复制）；
+   论文算子 A = 固定高斯核、步长 4（伪逆无解析式，须数值求，见“现场求伪逆”卡）。 */
+const FACE_B64 = 'data:image/jpeg;base64,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';
+const IMGN = 96, BLK = 4, LRN = IMGN / BLK;
+let imgReady = false;
+let yF, xF, baseF, residF, randF;
+const imCanvas = { y: $('cv-y'), x: $('cv-x'), b: $('cv-b'), r: $('cv-r'), o: $('cv-o'), g: $('cv-g') };
+function renderRGB(cv, arr, n, offset = 0) {
+  const ctx = cv.getContext('2d');
+  const id = ctx.createImageData(n, n);
+  for (let i = 0; i < n * n; i++) {
+    id.data[4 * i]     = Math.max(0, Math.min(255, arr[3 * i] + offset));
+    id.data[4 * i + 1] = Math.max(0, Math.min(255, arr[3 * i + 1] + offset));
+    id.data[4 * i + 2] = Math.max(0, Math.min(255, arr[3 * i + 2] + offset));
+    id.data[4 * i + 3] = 255;
+  }
+  ctx.putImageData(id, 0, 0);
+}
+function blockAvg(src) {          // A：96² → 24²，4×4 块平均
+  const out = new Float32Array(LRN * LRN * 3);
+  const inv = 1 / (BLK * BLK);
+  for (let by = 0; by < LRN; by++) for (let bx = 0; bx < LRN; bx++) {
+    let r = 0, g = 0, b = 0;
+    for (let dy = 0; dy < BLK; dy++) for (let dx = 0; dx < BLK; dx++) {
+      const i = 3 * ((by * BLK + dy) * IMGN + bx * BLK + dx);
+      r += src[i]; g += src[i + 1]; b += src[i + 2];
+    }
+    const o = 3 * (by * LRN + bx);
+    out[o] = r * inv; out[o + 1] = g * inv; out[o + 2] = b * inv;
+  }
+  return out;
+}
+function nearestUp(lr) {          // A⁺：24² → 96²，块内复制（本算子的精确伪逆）
+  const out = new Float32Array(IMGN * IMGN * 3);
+  for (let y = 0; y < IMGN; y++) for (let x = 0; x < IMGN; x++) {
+    const o = 3 * (y * IMGN + x), s = 3 * ((y >> 2) * LRN + (x >> 2));
+    out[o] = lr[s]; out[o + 1] = lr[s + 1]; out[o + 2] = lr[s + 2];
+  }
+  return out;
+}
+const subA = (a, b) => a.map((v, i) => v - b[i]);
+const addA = (a, b) => a.map((v, i) => v + b[i]);
+{
+  const im = new Image();
+  im.onload = () => {
+    const c = document.createElement('canvas');
+    c.width = c.height = IMGN;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(im, 0, 0, IMGN, IMGN);
+    const d = ctx.getImageData(0, 0, IMGN, IMGN).data;
+    yF = new Float32Array(IMGN * IMGN * 3);
+    for (let i = 0; i < IMGN * IMGN; i++) {
+      yF[3 * i] = d[4 * i]; yF[3 * i + 1] = d[4 * i + 1]; yF[3 * i + 2] = d[4 * i + 2];
+    }
+    xF = blockAvg(yF);
+    baseF = nearestUp(xF);                       // A⁺x = A⁺Ay
+    residF = subA(yF, baseF);                    // (I−A⁺A)y：零空间残差
+    const rnd = Float32Array.from({ length: IMGN * IMGN * 3 }, () => (Math.random() * 2 - 1) * 46);
+    randF = subA(rnd, nearestUp(blockAvg(rnd))); // 把噪声投影进零空间 → 严格合法的乱猜
+    imgReady = true;
+    applyImg(F.img);
+  };
+  im.src = FACE_B64;
+}
+function maxErr(hat) {            // max|A ŷ − x|
+  const lr = blockAvg(hat);
+  let m = 0;
+  for (let i = 0; i < lr.length; i++) m = Math.max(m, Math.abs(lr[i] - xF[i]));
+  return m;
+}
+const errTxt = e => e < 1e-3 ? '0' : e.toExponential(1);
+function setCell(key, show, label) {
+  const cell = $('ic-' + key);
+  cell.style.display = show ? '' : 'none';
+  cell.classList.remove('dim');
+  if (label) cell.querySelector('span').textContent = label;
+}
+function applyImg(preset) {
+  F.img = preset;
+  cards.img.style.display = preset ? '' : 'none';
+  if (!preset) return;
+  const paper = $('img-paper'), row = $('img-row'), errLine = $('img-err'), note = $('img-note');
+  const isPic = preset === 'paper' || preset === 'prsr';
+  row.style.display = isPic ? 'none' : 'flex';
+  errLine.style.display = isPic ? 'none' : '';
+  paper.style.display = isPic ? '' : 'none';
+  if (preset === 'paper') {
+    paper.src = 'images/fig4.png';
+    $('img-title').textContent = '论文实测 · CelebA 4× 超分（论文图 4）';
+    note.textContent = '从左到右：低清 x、真图 y、MSE（糊）、AffMSE、SoftGAN、AffGAN（最锐利且合法）。本页沙盘里的每个结论都能在这里找到照片版。';
+    return;
+  }
+  if (preset === 'prsr') {
+    paper.src = '4左.png';
+    $('img-title').textContent = 'PRSR：逐像素采样后验（对照阅读）';
+    note.textContent = '自回归模型显式建模 p(yⱼ|y<ⱼ, x)，再逐点采样——慢但多样；AffGAN 一步众数——快但唯一。';
+    return;
+  }
+  if (!imgReady) return;
+  setCell('y', false); setCell('b', false); setCell('r', false); setCell('o', false); setCell('g', false);
+  setCell('x', true, '低清 x = Ay（24×24）');
+  renderRGB(imCanvas.x, xF, LRN);
+  if (preset === 'legal3') {
+    $('img-title').textContent = '真实图像 · 合法 ≠ 好看';
+    setCell('b', true, 'ŷ = A⁺x（合法·糊）');
+    renderRGB(imCanvas.b, baseF, IMGN);
+    setCell('o', true, 'ŷ = A⁺x + 真残差（合法·锐）');
+    renderRGB(imCanvas.o, addA(baseF, residF), IMGN);
+    setCell('g', true, 'ŷ = A⁺x + 乱猜残差（合法·垃圾）');
+    renderRGB(imCanvas.g, addA(baseF, randF), IMGN);
+    errLine.innerHTML = `三张 ŷ 的一致性误差 max|Aŷ−x| = <b>${errTxt(maxErr(baseF))} · ${errTxt(maxErr(addA(baseF, residF)))} · ${errTxt(maxErr(addA(baseF, randF)))}</b>——全部严格合法`;
+    note.textContent = '零空间残差怎么填都不破坏一致性；填得好不好看，全靠训练目标。演示算子：4×4 块平均（精确伪逆=块内复制）；论文：固定高斯核、步长 4。';
+  } else if (preset === 'down') {
+    $('img-title').textContent = '准备 1/3 · 固定下采样算子 A';
+    setCell('y', true, '高清 y（96×96）');
+    renderRGB(imCanvas.y, yF, IMGN);
+    errLine.textContent = '';
+    note.textContent = '演示 A：4×4 块平均、步长 4。论文 A：固定高斯模糊核、步长 4——重叠的高斯核让伪逆失去解析式，必须像下方卡片那样用 SGD 数值求。';
+  } else if (preset === 'base') {
+    $('img-title').textContent = '出厂状态 · 基线 A⁺x 的照片版';
+    setCell('b', true, '基线 A⁺x（糊）');
+    renderRGB(imCanvas.b, baseF, IMGN);
+    errLine.innerHTML = `一致性 max|A(A⁺x)−x| = <b>${errTxt(maxErr(baseF))}</b> ✓`;
+    note.textContent = '低频全对、细节全无——“蓝曲线躺在对角线上”的照片版。';
+  } else if (preset === 'train') {
+    $('img-title').textContent = '训练进行中 · g_θ(x) 的照片版（示意）';
+    setCell('o', true, 'g_θ(x) 当前输出');
+    errLine.textContent = '';
+    note.textContent = '残差按训练进度（交叉熵下降比例）逐渐混入：从糊到锐，合法性全程不变。';
+    renderTrainBlend();
+  } else if (preset === 'beats') {
+    $('img-title').textContent = '推理四拍 · 照片版（与检查单同步点亮）';
+    setCell('b', true, '② 基线 A⁺x');
+    renderRGB(imCanvas.b, baseF, IMGN);
+    setCell('r', true, '③ 残差 = 网络的活');
+    renderRGB(imCanvas.r, residF, IMGN, 128);
+    setCell('o', true, '④ ŷ = ② + ③');
+    renderRGB(imCanvas.o, addA(baseF, residF), IMGN);
+    errLine.innerHTML = `一致性 max|Aŷ−x| = <b>${errTxt(maxErr(addA(baseF, residF)))}</b> ✓（数学严格）`;
+    note.textContent = '照片版第③拍的残差用“理想网络”的输出代演（左侧沙盘里的白球则是货真价实的网络前向）——真实推理时残差只能由 f_θ 从 x 猜出来，这正是训练教它的本事。';
+    syncBeatsImg();
+  }
+}
+function renderTrainBlend() {
+  if (!imgReady || F.img !== 'train' || baselineCE === null) return;
+  const a = Math.max(0, Math.min(1, (baselineCE - ceOfGen()) / (baselineCE - 4.75)));
+  renderRGB(imCanvas.o, addA(baseF, residF.map(v => v * a)), IMGN);
+}
+function syncBeatsImg() {
+  if (F.img !== 'beats') return;
+  const order = { x: 1, b: 2, r: 3, o: 4 };
+  for (const k in order) $('ic-' + k).classList.toggle('dim', beat < order[k]);
+}
+
+function updateX() {
+  const x0 = parseFloat(ui.slider.value);
+  ui.xval.textContent = x0.toFixed(2);
+  const st = solve(x0);
+
+  if (st) {
+    const { L } = st;
+    const len = L.t1 - L.t0, tm = (L.t0 + L.t1) / 2;
+    const mx = L.px + tm * L.dx, mz = L.pz + tm * L.dz;
+    wall.scale.set(len, WALLH, 1);
+    wall.position.set(mx, WALLH / 2, mz);
+    wall.lookAt(mx - L.dz, WALLH / 2, mz + L.dx);
+    baseLine.geometry.dispose();
+    baseLine.geometry = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(L.px + L.t0 * L.dx, 0.04, L.pz + L.t0 * L.dz),
+      new THREE.Vector3(L.px + L.t1 * L.dx, 0.04, L.pz + L.t1 * L.dz)]);
+    baseLine.computeLineDistances();
+  }
+  wall.visible = F.wall && ui.wall.checked && !!st;
+  baseLine.visible = F.wall && ui.wall.checked && !!st;
+  rebuildPostTube(F.post && ui.post.checked && st ? st : null);
+
+  mkGood.g.visible = mkUgly.g.visible = false;
+  if (F.pts1 && st) { placeMk(mkGood, st.map); placeMk(mkUgly, st.mean); }
+  mkMode.g.visible = mkMean.g.visible = false;
+  if (F.markers && st) { placeMk(mkMode, st.map); placeMk(mkMean, st.mean); }
+
+  if (F.bDemo) updateBDemo(x0);
+  if (F.beats) { beat = 0; beatT = 0; updateBeats(); }
+  if (F.prsr && st) prsrReset(st);
+}
+
+function updateBeats() {
+  const x0 = parseFloat(ui.slider.value);
+  const fRaw = fRawOf(x0);            // 第③拍：先有网络前向输出（白球）
+  const yh = project(fRaw, x0);       // 第④拍：投影之后才有 ŷ（蓝球）
+  for (let i = 1; i <= 4; i++) $('bt' + i).classList.toggle('on', F.beats && beat >= i);
+  mkBase.g.visible = F.beats && beat >= 2;
+  if (beat >= 2) placeMk(mkBase, [x0, x0]);
+  mkF.g.visible = F.beats && beat >= 3;
+  residArrow.visible = F.beats && beat >= 3;
+  if (beat >= 3) {
+    mkF.g.visible = F.beats;
+    // 白球高度对齐蓝球：高度只是可视化，对齐后“垂直投影到约束线”的几何关系更易读
+    const yLift = Math.max(hAt(yh[0], yh[1]) + 0.34, hAt(fRaw[0], fRaw[1]) + 0.4);
+    mkF.g.position.set(fRaw[0], yLift, fRaw[1]);
+    const from = new THREE.Vector3(x0, hAt(x0, x0) + 0.34, x0);
+    const to = new THREE.Vector3(yh[0], hAt(yh[0], yh[1]) + 0.34, yh[1]);
+    const dir = new THREE.Vector3().subVectors(to, from);
+    const len = dir.length();
+    residArrow.position.copy(from);
+    if (len > 0.15) {
+      residArrow.setDirection(dir.normalize());
+      residArrow.setLength(len, Math.min(0.7, len * 0.35), 0.35);
+    } else residArrow.visible = false;
+  }
+  mkOut.g.visible = F.beats && beat >= 4;
+  projLine.visible = F.beats && beat >= 4;
+  if (beat >= 4) {
+    placeMk(mkOut, yh);
+    projLine.geometry.dispose();
+    projLine.geometry = new THREE.BufferGeometry().setFromPoints(
+      [mkF.g.position.clone(), mkOut.g.position.clone()]);
+    projLine.computeLineDistances();
+    const err = Math.abs((yh[0] + yh[1]) / 2 - x0);
+    $('inf-err').textContent = err < 1e-12 ? '0（精确）' : err.toExponential(2);
+  }
+  syncBeatsImg();
+}
+
+ui.slider.addEventListener('input', () => { stopPlay(); updateX(); });
+ui.wall.addEventListener('change', updateX);
+ui.post.addEventListener('change', updateX);
+ui.grad.addEventListener('change', () => { if (gradField) gradField.visible = F.grad && ui.grad.checked; });
+let playing = false, playDir = 1;
+function stopPlay() { playing = false; ui.play.textContent = '▶ 扫描'; }
+ui.play.addEventListener('click', () => {
+  playing = !playing;
+  ui.play.textContent = playing ? '⏸ 暂停' : '▶ 扫描';
+});
+$('btn-b0').addEventListener('click', () => { b1 = 0; b2 = 0; bIter = 0; bLoss = NaN; bRunning = true; });
+$('btn-brand').addEventListener('click', () => { b1 = Math.random() * 3 - 1.2; b2 = Math.random() * 3 - 1.2; bIter = 0; bLoss = NaN; bRunning = true; });
+$('btn-train').addEventListener('click', () => {
+  training = !training;
+  $('btn-train').textContent = training ? '⏸ 暂停' : '▶ 训练';
+});
+$('btn-treset').addEventListener('click', () => {
+  initNet();
+  iter = 0;
+  training = false;
+  $('btn-train').textContent = '▶ 训练';
+  refreshTrainUI(true);
+});
+$('btn-replay').addEventListener('click', () => { beat = 0; beatT = 0; updateBeats(); });
+
+let baselineCE = null;
+function refreshTrainUI(rebuild = false) {
+  $('tr-iter').textContent = iter;
+  $('tr-sig').textContent = sigNow().toFixed(2);
+  $('tr-ce').textContent = ceOfGen().toFixed(2);
+  if (baselineCE === null) {
+    const keep = tk;
+    tk = new Float64Array(KN);
+    baselineCE = ceOfGen();
+    tk = keep;
+    $('tr-base').textContent = baselineCE.toFixed(2);
+  }
+  if (rebuild && F.curves) genTube = buildCurve(yHat, genTubeMat, genTube);
+  renderTrainBlend();
+}
+function pretrain(target = 42000) {   // 进入推理/PRSR 步时确保网络已训练
+  if (iter >= target) return;
+  while (iter < target) scoreStep(2000);
+  refreshTrainUI(true);
+}
+
+/* ============ 5. 九步导览 ============ */
+const STEPS = [
+{
+  title: '主线①　MAP：目标 = 后验众数，不取平均',
+  html: `
+  <p>一张低清图 $x$ 对应无穷多张合法高清图（橙墙），网络必须选一张输出。选哪张？论文把目标定为 <em>MAP：后验众数</em>——所有合法解里先验 $p_Y$ 最高的那张（蓝球，永远在山脊上）。</p>
+  <p>对照组是行业默认做法：用 MSE 训练，其贝叶斯最优解是<em>后验均值</em>（红球）——后验多峰时，几个峰一平均恰好掉进峰间的谷底，先验密度 ≈ 0。翻译回图像世界：把几张各自清晰的候选图平均成一张谁都不像的糊图。这就是“MSE 出图糊”的全部秘密。</p>
+  <div class="task">👉 点“▶ 扫描”让 x 来回移动：红球（均值）系统性地穿行谷底，蓝球（众数）始终骑在山脊上。</div>`,
+  cfg: { terrain: true, wall: true, post: true, markers: true, rows: { x: true, wall: true, post: true }, x: 0.5,
+         cam: [12, 9, 17], tgt: [1, 1, -1] },
+},
+{
+  title: '主线②　仿射投影：把似然从优化里消掉',
+  html: `
+  <p>下采样是线性变换 $x=Ay$，所以合法解集是仿射子空间（橙墙与地面的交线）。在任意 SR 网络末端加一层<em>固定的</em>仿射投影：$$g_\\theta(x)=\\underbrace{A^+x}_{\\text{基线解}}+\\underbrace{(I-A^+A)f_\\theta(x)}_{\\text{零空间残差}}$$ 无论 $f_\\theta$ 输出什么，$Ag_\\theta(x)=x$ <em>恒成立</em>——似然项 $p(x\\mid\\hat y)$ 被结构恒满足，从优化问题里<em>整个消掉</em>。</p>
+  <p>分工由此确定：<em>投影层管“不出平面”（合法），训练目标管“落在哪”（像不像）</em>——整个 CNN 就是那个摊销的 MAP 推断器，投影只是它的最后一层。右侧真实图像卡是铁证：同一张低清 x 配三种残差，糊的、锐的、乱猜的三张高清图<em>下采样回去全部精确等于 x</em>——合法性不挑质量。</p>
+  <div class="task">👉 看右侧三张照片的一致性误差：全是 0。再拖动 x：橙墙平移，但“合法解是一整面墙”这件事永远不变。</div>`,
+  cfg: { terrain: true, wall: true, post: true, img: 'legal3', rows: { x: true, wall: true }, x: 0.5,
+         cam: [13, 10, 20], tgt: [1, 1, -1] },
+},
+{
+  title: '主线③　交叉熵：只剩先验项，顺便甩掉配对数据',
+  html: `
+  <p>似然消掉后，MAP 目标只剩先验项。对所有 $x$ 一起做（摊销），论文推出等价形式：$$\\operatorname*{argmax}_\\theta\\ \\mathbb{E}_{x\\sim p_X}\\big[\\log p_Y(g_\\theta(x))\\big]\\iff\\operatorname*{argmin}_\\theta\\ H[q_\\theta,p_Y]$$ 其中 $q_\\theta$ 是把每个 $x$ 喂给网络后输出点形成的分布。直觉：<em>让输出点云平均踩在先验地形的高处</em>。</p>
+  <p>重要副产品：这个目标里<em>没有成对的 (x, y)</em>——训练不再需要一一配对的 HR/LR 图像对。场上这团青绿点云就是全部素材：一堆互不相关的真 HR 图。超分问题从“回归”变成了“生成模型训练”。</p>
+  <div class="task">👉 把鼠标放到曲面上读 p_Y：交叉熵就是“输出点平均踩多高”的账单——第 7 步训练时你会亲眼看着它下降。</div>`,
+  cfg: { terrain: true, cloudsFlat: true, rows: {},
+         cam: [18, 27, 25], tgt: [0, 0.5, 0] },
+},
+{
+  title: '主线④　三法：交叉熵没法直接算',
+  html: `
+  <p>$H[q_\\theta,p_Y]$ 又撞上那个老问题：真实图像的 $p_Y$ 无法显式写出，这个量<em>没法直接算</em>。论文给出三条近似路线：</p>
+  <ul>
+    <li><em>AffGAN</em>：判别器隐式估计密度比，配合改版更新规则最小化 $\\mathrm{KL}[q_\\theta\\,\\|\\,p_Y]$；</li>
+    <li><em>AffDG</em>：去噪自编码器免费估计 score $\\nabla_y\\log p_Y$——就是背景里处处指向山脊的灰白箭头；</li>
+    <li><em>AffLL</em>：老老实实训一个显式密度模型（PixelCNN + MCGSM 似然）拿密度打分。</li>
+  </ul>
+  <p>实验结论：AffGAN 最锐利、结果合理；AffDG 与 AffLL 在真实图像上都偏糊。</p>
+  <div class="task">👉 灰白短线就是 AffDG 的罗盘，也是本页训练引擎将要使用的力场。四步主线走完，下面开工：准备 → 训练 → 推理。</div>`,
+  cfg: { terrain: true, grad: true, rows: { grad: true },
+         cam: [18, 27, 25], tgt: [0, 0.5, 0] },
+},
+{
+  title: '准备阶段：现场把 A⁺ 算出来',
+  html: `
+  <p>训练前三件事：<em>1)</em> 固定 $A$——一个<em>固定高斯平滑核</em>的带步长卷积，步长 = 放大倍数（论文实验为 4×：CelebA 64→16、ImageNet 128→32）；<em>2)</em> 数值求 $A^+$——实现为反卷积层，SGD 最小化 $$\\|Ay-ABAy\\|^2+\\|Bx-BABx\\|^2$$（$A^+$ 不是 $A^\\top$，必须专门算，收敛误差 $10^{-12}\\sim10^{-8}$）；<em>3)</em> 搭网络：任意 CNN 主体 $f_\\theta$ + 末端投影层（$A$、$A^+$ 冻结）。</p>
+  <p>右侧就是这个小 SGD 的现场直播：青绿实线是 $B$ 的“上采样方向”$\\{Bx\\}$，虚线是目标（最小范数右逆 = 对角线）。</p>
+  <div class="task">👉 先点“从零初始化训练”看 B→(1,1)、损失掉到 1e-12 量级；再点“随机初始化训练”看陷阱：损失照样归零、Bx 照样合法，但停在别的右逆上——不再是最保守基线。</div>`,
+  cfg: { flat: true, bDemo: true, wall: true, img: 'down', rows: { x: true }, x: 3,
+         cam: [0.5, 30, 10], tgt: [0, 0, 0] },
+},
+{
+  title: '出厂状态：整条基线',
+  html: `
+  <p>网络<em>随机初始化</em>、还没训练：输出曲线（蓝）<em>贴着基线（黄）小幅抖动</em>——低频被投影层结构性锁对，零空间残差只是初始化留下的随机小值。这正是论文图 2 的观察：<em>带投影的网络起始 loss 就更低</em>，因为低频一开始就是对的。交叉熵停在“出厂值”（右侧监视器，和纯基线几乎一样差）。</p>
+  <p>训练要做的全部事情：把蓝曲线的零空间分量从“随机抖动”掰到山脊上。</p>
+  <div class="task">👉 记住右侧的出厂交叉熵数字，下一步看它跌到哪。</div>`,
+  cfg: { terrain: true, curves: true, train: false, trainCard: true, img: 'base', rows: {},
+         cam: [18, 26, 26], tgt: [0, 0.5, 0] },
+},
+{
+  title: '训练阶段：现场直播（AffGAN 的一次迭代 × 几千次）',
+  html: `
+  <p>论文的一次迭代六拍：<em>1)</em> 采一批 LR 图 $x\\sim p_X$，过生成器得 $\\hat y=\\Pi^A_x f_\\theta(x)$——每张都天然满足 $A\\hat y=x$（蓝点云）；<em>2)</em> 采一批<em>不相关的</em>真 HR 图 $y\\sim p_Y$（青绿点云）；<em>3)</em> 给两边加同强度 instance noise 并逐渐退火（论文：σ 从 0.1 线性退火到 0，且<em>没有这层噪声就无法稳定训练</em>）——让 $q_\\theta$ 与 $p_Y$ 这两个几乎不重叠的流形分布有共同支撑集，判别器才不会“一眼看穿”导致梯度失效（看两团点云的抖动幅度 σ 慢慢变小）；<em>4)</em> 更新判别器 $D$；<em>5)</em> 更新生成器——论文的改版规则最大化 $\\log\\frac{D}{1-D}$，对应最小化 $\\mathrm{KL}[q_\\theta\\|p_Y]$；<em>6)</em> 重复到收敛。梯度穿过投影层时变成 $(I-A^+A)\\frac{\\partial f_\\theta}{\\partial\\theta}$：只有高频部分在更新。</p>
+  <p class="note">沙盘引擎说明：这里用“沿 $\\nabla\\log p_\\sigma$ 爬山”（AffDG 路线）代替判别器——二维里 score 可精确算，本质相同：都在把 $q_\\theta$ 推进 $p_Y$ 的高密度区；σ 退火正是 instance noise。</p>
+  <div class="task">👉 训练已自动开始。盯三样东西：蓝曲线爬上山脊、点云抖动（σ）归零、交叉熵从出厂值跌向暴力 MAP ≈ 4.7。</div>`,
+  cfg: { terrain: true, curves: true, clouds: true, train: true, trainCard: true, trainBtns: true, img: 'train', rows: {},
+         cam: [18, 26, 26], tgt: [0, 0.5, 0] },
+},
+{
+  title: '推理阶段：四拍出一张图',
+  html: `
+  <p>训练完成，权重冻结。一张<em>新</em>低清图 $x$ 进来，四拍出图：$$\\hat y=\\underbrace{A^+x}_{\\text{baseline}}+\\underbrace{(I-A^+A)f_\\theta(x)}_{\\text{high-pass detail}}$$ 右侧检查单逐拍点亮。零优化迭代、零采样，<em>一次前向就是近似 MAP 解</em>——“摊销”在这里兑现。一致性是数学严格的：$|A\\hat y-x|$ 显示为 0（数值精度级），任何没有投影层的网络都做不到。</p>
+  <p>因果顺序请看清：<em>先有白球（网络前向 $f_\\theta(x)$），投影之后才有蓝球（$\\hat y$）</em>——本页第③④拍就是按这个顺序真实计算的。白球偏离约束线的对角分量是随机初始化留下的“化石”：训练的梯度经过投影层被高通滤波（$(I-A^+A)\\frac{\\partial f_\\theta}{\\partial\\theta}$，论文式 25），从头到尾没碰过它；它对最终输出也毫无影响——同一个蓝球对应无穷多个白球，投影一步把差别精确抹平。</p>
+  <p>再补一个几何事实：这一步是<em>正交投影</em>（灰色虚线）——白球到蓝球的位移沿对角方向 $(r,r)$，与约束线方向 $(1,-1)$ 精确垂直，蓝球就是白球在约束线上的<em>垂足</em>。注意垂直关系在<em>像素平面</em>里成立；场景里的高度是密度可视化，会把直角画歪——想看标准的垂足几何，回第二页（仿射投影）第 6 步和第 12 步。</p>
+  <div class="task">👉 沙盘四拍与右侧照片四拍同步点亮：② 糊的基线 → ③ 网络补的残差 → ④ 锐利输出。看完一轮后拖滑块换一张 x，点“重播四拍”。</div>`,
+  cfg: { terrain: true, wall: true, beats: true, curves: true, pretrain: true, img: 'beats', rows: { x: true }, x: 0.5,
+         cam: [11, 8, 17], tgt: [1, 1, -1] },
+},
+{
+  title: '与 PRSR 的呼应：采样 vs 众数',
+  html: `
+  <p>同一个贝叶斯问题的另一种取舍。<em>PRSR</em> 逐像素自回归地<em>从后验采样</em>：慢（一张图要采几万次），但多样——看洋红点如何按后验质量分配落满每一个峰。<em>AffGAN</em> 一步输出<em>众数</em>：快（一次前向），但唯一（蓝球）。速度换多样性，多样性换速度——没有免费午餐。</p>
+  <div class="task">👉 换几个 x，观察洋红点在峰间的分配比例如何变化——那就是后验概率本身。</div>`,
+  cfg: { terrain: true, wall: true, post: true, markers: true, prsr: true, pretrain: true, img: 'prsr', rows: { x: true }, x: 0.5,
+         cam: [11, 9, 18], tgt: [1, 1, -1] },
+},
+{
+  title: '心智模型 · 一句话',
+  html: `
+  <p><em>训练教会网络“在合法平面内挑哪一点”，投影层保证“永远不出平面”，推理时一次前向直达答案。</em></p>
+  <p>右侧是论文 CelebA 的实测结果（图 4）：MSE 列糊、AffGAN 列锐，而两者的输出下采样后都等于 x——整个沙盘故事的照片版结局。</p>
+  <p>三页导览合起来吃透整篇论文：第一页（瑞士卷九步）看“为什么挑众数”；第二页（仿射投影十五步）看“平面与投影是什么”；本页看“整台机器怎么转”。全部控件已解锁，自由探索。</p>
+  <div class="task">👉 建议收官实验：点“▶ 训练”接着练，看交叉熵还能不能更接近暴力 MAP；或点“↺ 重置网络”从头看一遍训练。</div>`,
+  cfg: { terrain: true, curves: true, clouds: true, trainCard: true, trainBtns: true, legend: true, img: 'paper',
+         rows: { x: true, wall: true, post: true, grad: true }, x: 0.5,
+         cam: [18, 27, 25], tgt: [0, 0.5, 0] },
+},
+];
+
+let cur = -1, camTween = null;
+const stepNo = $('step-no'), stepTitle = $('step-title'), stepBody = $('step-body');
+const btnPrev = $('btn-prev'), btnNext = $('btn-next'), dotsEl = $('dots');
+STEPS.forEach((_, i) => {
+  const d = document.createElement('span');
+  d.title = `第 ${i + 1} 步`;
+  d.addEventListener('click', () => applyStep(i));
+  dotsEl.appendChild(d);
+});
+
+function applyStep(i, snap = false) {
+  cur = i;
+  const s = STEPS[i], c = s.cfg;
+  stepNo.textContent = `第 ${i + 1} / ${STEPS.length} 步`;
+  stepTitle.textContent = s.title;
+  stepBody.innerHTML = s.html;
+  if (window.renderMathInElement) renderMathInElement(stepBody, {
+    delimiters: [{ left: '$$', right: '$$', display: true }, { left: '$', right: '$', display: false }],
+    throwOnError: false,
+  });
+  btnPrev.disabled = i === 0;
+  btnNext.textContent = i === STEPS.length - 1 ? '↺ 从头再看' : '下一步 →';
+  [...dotsEl.children].forEach((d, k) => d.className = k === i ? 'on' : k < i ? 'done' : '');
+
+  F = {
+    terrain: !!c.terrain, wall: !!c.wall, post: !!c.post, pts1: !!c.pts1,
+    markers: !!c.markers, grad: !!c.grad, cloudsFlat: !!c.cloudsFlat,
+    bDemo: !!c.bDemo, curves: !!c.curves, clouds: !!c.clouds,
+    beats: !!c.beats, prsr: !!c.prsr,
+  };
+  heightTarget = c.terrain ? 1 : 0;
+  surface.visible = !!c.terrain;
+  gridHelper.visible = !c.terrain;
+  diagTarget.visible = !!c.bDemo;
+  bLine.visible = !!c.bDemo;
+  if (!c.bDemo) { bMk.g.visible = false; bRunning = false; }
+  if (gradField) gradField.visible = F.grad && ui.grad.checked;
+  realCloud.visible = !!c.clouds || !!c.cloudsFlat;
+  genCloud.visible = !!c.clouds;
+  training = !!c.train;
+  $('btn-train').textContent = training ? '⏸ 暂停' : '▶ 训练';
+  if (c.pretrain) pretrain();
+  if (F.curves) {
+    baseTube = buildCurve(x => [x, x], baseTubeMat, baseTube);
+    genTube = buildCurve(yHat, genTubeMat, genTube);
+    baseTube.visible = genTube.visible = true;
+  } else {
+    if (baseTube) baseTube.visible = false;
+    if (genTube) genTube.visible = false;
+  }
+  prsrPts.visible = !!c.prsr;
+  residArrow.visible = false;
+  projLine.visible = false;
+  mkBase.g.visible = mkF.g.visible = mkOut.g.visible = false;
+  if (c.x !== undefined) ui.slider.value = c.x;
+  stopPlay();
+
+  const R = c.rows || {};
+  for (const k of ['x', 'wall', 'post', 'grad']) rows[k].style.display = R[k] ? 'flex' : 'none';
+  cards.ctrl.style.display = (R.x || R.grad) ? '' : 'none';
+  cards.b.style.display = c.bDemo ? '' : 'none';
+  cards.train.style.display = c.trainCard || c.train ? '' : 'none';
+  $('train-btns').style.display = c.trainBtns ? '' : 'none';
+  cards.infer.style.display = c.beats ? '' : 'none';
+  cards.prsr.style.display = c.prsr ? '' : 'none';
+  cards.legend.style.display = c.legend ? '' : 'none';
+  applyImg(c.img);
+
+  if (c.trainCard || c.train) refreshTrainUI(false);
+  updateX();
+  if (c.clouds || c.cloudsFlat) jitterClouds();
+
+  const p1 = new THREE.Vector3(...c.cam), t1 = new THREE.Vector3(...c.tgt);
+  if (snap) {
+    camera.position.copy(p1);
+    controls.target.copy(t1);
+    camTween = null;
+  } else {
+    camTween = { t: 0, p0: camera.position.clone(), t0: controls.target.clone(), p1, t1 };
+  }
+}
+btnPrev.addEventListener('click', () => { if (cur > 0) applyStep(cur - 1); });
+btnNext.addEventListener('click', () => applyStep(cur === STEPS.length - 1 ? 0 : cur + 1));
+addEventListener('keydown', e => {
+  if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
+  if (e.key === 'ArrowRight') btnNext.click();
+  if (e.key === 'ArrowLeft') btnPrev.click();
+});
+
+/* ============ 6. 悬停探针 ============ */
+const tooltip = $('tooltip');
+const raycaster = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+let dragging = false;
+labelRenderer.domElement.addEventListener('pointerdown', () => { dragging = true; tooltip.style.display = 'none'; });
+addEventListener('pointerup', () => { dragging = false; });
+labelRenderer.domElement.addEventListener('pointerleave', () => { tooltip.style.display = 'none'; });
+labelRenderer.domElement.addEventListener('pointermove', e => {
+  if (dragging || !surface.visible) return;
+  const rect = sceneEl.getBoundingClientRect();
+  ndc.set(((e.clientX - rect.left) / rect.width) * 2 - 1,
+          -((e.clientY - rect.top) / rect.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const hit = raycaster.intersectObject(surface)[0];
+  if (!hit) { tooltip.style.display = 'none'; return; }
+  const d = rho(hit.point.x, hit.point.z);
+  tooltip.innerHTML = `y₁ = <b>${hit.point.x.toFixed(2)}</b>　y₂ = <b>${hit.point.z.toFixed(2)}</b><br>` +
+    `p_Y = <b>${d.toExponential(2)}</b>　−ln p_Y = <b>${(-Math.log(Math.max(d, 1e-30))).toFixed(2)}</b>`;
+  tooltip.style.display = 'block';
+  tooltip.style.left = (e.clientX - rect.left + 14) + 'px';
+  tooltip.style.top = (e.clientY - rect.top + 14) + 'px';
+});
+
+/* ============ 7. 尺寸与主循环 ============ */
+function resize() {
+  const w = sceneEl.clientWidth, h = sceneEl.clientHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  labelRenderer.setSize(w, h);
+}
+new ResizeObserver(resize).observe(sceneEl);
+resize();
+buildGradField();
+updateHeights();
+applyStep(0, true);
+
+window.__demo = {
+  step: () => cur,
+  next: () => btnNext.click(),
+  state: () => ({ step: cur, iter, ce: ceOfGen(), b: [b1, b2] }),
+};
+
+const smooth = t => t * t * (3 - 2 * t);
+const clock = new THREE.Clock();
+let frame = 0;
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  frame++;
+  if (Math.abs(heightF - heightTarget) > 1e-4) {
+    const step = dt / 1.4;
+    heightF += Math.max(-step, Math.min(step, heightTarget - heightF));
+    if (Math.abs(heightF - heightTarget) <= 1e-4) heightF = heightTarget;
+    updateHeights();
+    updateX();
+  }
+  if (camTween) {
+    camTween.t += dt / 1.5;
+    const k = smooth(Math.min(camTween.t, 1));
+    camera.position.lerpVectors(camTween.p0, camTween.p1, k);
+    controls.target.lerpVectors(camTween.t0, camTween.t1, k);
+    if (camTween.t >= 1) camTween = null;
+  }
+  if (playing) {
+    let x = parseFloat(ui.slider.value) + playDir * 2.2 * dt;
+    if (x > XMAX) { x = XMAX; playDir = -1; }
+    if (x < XMIN) { x = XMIN; playDir = 1; }
+    ui.slider.value = x;
+    updateX();
+  }
+  if (training) {
+    scoreStep(25);
+    if (frame % 4 === 0 && F.curves) genTube = buildCurve(yHat, genTubeMat, genTube);
+    if (frame % 5 === 0 && (F.clouds || F.cloudsFlat)) jitterClouds();
+    if (frame % 20 === 0) refreshTrainUI(false);
+  } else if ((F.clouds || F.cloudsFlat) && frame % 8 === 0) {
+    jitterClouds();
+  }
+  if (bRunning && F.bDemo) {
+    bStep(40);
+    updateBDemo(parseFloat(ui.slider.value));
+  }
+  if (F.beats && beat < 4) {
+    beatT += dt;
+    if (beatT > 1.5) { beatT = 0; beat++; updateBeats(); }
+  }
+  if (F.prsr) {
+    prsrClock += dt;
+    if (prsrClock > 0.12) { prsrClock = 0; prsrSpawn(); }
+  }
+  controls.update();
+  renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
